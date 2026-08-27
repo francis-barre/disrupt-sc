@@ -1,6 +1,6 @@
 # Output Files
 
-DisruptSC generates comprehensive output data for analysis and visualization. This guide explains all output files and how to use them.
+DisruptSC generates comprehensive output data for analysis and visualization. This guide explains all output files and how to use them. Spatial outputs are written as FlatGeobuf (`.fgb`); tabular CSV, JSON, and YAML outputs keep their existing formats.
 
 ## Output Structure
 
@@ -14,9 +14,9 @@ output/<scope>/<timestamp>/
 │   ├── country_data.json
 │   └── flow_df_*.csv
 ├── Spatial Data
-│   ├── firm_table.geojson
-│   ├── household_table.geojson
-│   └── transport_edges_with_flows_*.geojson
+│   ├── firm_table.fgb
+│   ├── household_table.fgb
+│   └── transport_edges_with_flows_*.fgb
 ├── Network Data
 │   ├── sc_network_edgelist.csv
 │   └── io_table.csv
@@ -172,7 +172,7 @@ edge_003,port_001,port_002,maritime,5000,2500000,24.0
 
 ## Spatial Data
 
-### Firm Locations (`firm_table.geojson`)
+### Firm Locations (`firm_table.fgb`)
 
 Spatial firm data with attributes and results.
 
@@ -206,7 +206,7 @@ Spatial firm data with attributes and results.
 | `production_loss` | Total impact | float |
 | `importance` | Economic importance | float |
 
-### Household Locations (`household_table.geojson`)
+### Household Locations (`household_table.fgb`)
 
 Spatial household data with consumption impacts.
 
@@ -224,7 +224,7 @@ Spatial household data with consumption impacts.
 }
 ```
 
-### Transport Flows (`transport_edges_with_flows_*.geojson`)
+### Transport Flows (`transport_edges_with_flows_*.fgb`)
 
 Network visualization with flow data.
 
@@ -255,7 +255,7 @@ import matplotlib.pyplot as plt
 import contextily as ctx
 
 # Load transport flows
-flows = gpd.read_file('transport_edges_with_flows_0.geojson')
+flows = gpd.read_file('transport_edges_with_flows_0.fgb')
 flows = flows.to_crs(epsg=3857)  # Web Mercator for basemap
 
 # Create map
@@ -510,7 +510,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 
 # Load spatial results
-firms = gpd.read_file('firm_table.geojson')
+firms = gpd.read_file('firm_table.fgb')
 
 # Calculate loss rates
 firms['loss_rate'] = firms['production_loss'] / firms['eq_production']

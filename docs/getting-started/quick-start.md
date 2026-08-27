@@ -71,9 +71,9 @@ output/<scope>/<timestamp>/
 Useful outputs include:
 
 - `parameters.yaml` - resolved configuration snapshot.
-- `firm_table.geojson` - firm locations and attributes.
-- `household_table.geojson` - household locations and attributes.
-- `transport_edges_with_flows_*.geojson` - transport flows.
+- `firm_table.fgb` - firm locations and attributes.
+- `household_table.fgb` - household locations and attributes.
+- `transport_edges_with_flows_*.fgb` - transport flows.
 - `summary.csv` - aggregate loss summary when available.
 
 ## Full Data Scopes

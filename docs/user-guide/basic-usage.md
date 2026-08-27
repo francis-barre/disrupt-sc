@@ -175,9 +175,9 @@ output/<scope>/<timestamp>/
 Typical exported files include:
 
 - `parameters.yaml`
-- `firm_table.geojson`
-- `household_table.geojson`
-- `transport_edges_with_flows_*.geojson`
+- `firm_table.fgb`
+- `household_table.fgb`
+- `transport_edges_with_flows_*.fgb`
 - `summary.csv`
 - `exp.log`
 

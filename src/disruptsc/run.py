@@ -740,7 +740,7 @@ def _get_criticality_output_paths(scope: str, subfolder: str):
     run_dir.mkdir(parents=True, exist_ok=True)
     return (
         run_dir / "criticality_results.csv",
-        run_dir / "criticality_results.geojson",
+        run_dir / "criticality_results.fgb",
         run_dir / "criticality_results.fingerprint.json",
     )
 
