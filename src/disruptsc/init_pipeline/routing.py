@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from heapq import heappop, heappush
+from itertools import count
 import logging
 import math
 from pathlib import Path
@@ -165,15 +167,17 @@ def _precompute_and_assign(link_specs: list[dict],
         subgraph = _cargo_subgraph(transport_network, weight)
         sources = {s["origin"] for s in link_specs
                    if s["cargo_type"] == cargo_type}
+        destinations = defaultdict(set)
+        for spec in link_specs:
+            if spec["cargo_type"] == cargo_type:
+                destinations[spec["origin"]].add(spec["destination"])
 
         logging.info(f"Pre-computing routes: cargo={cargo_type}, "
                      f"{len(sources)} sources, {subgraph.number_of_edges()} edges")
 
         for source in progress(sources, f"Dijkstra {cargo_type}", total=len(sources)):
             try:
-                paths = nx.single_source_dijkstra_path(
-                    subgraph, source, weight=weight,
-                )
+                paths = _dijkstra_to_targets(subgraph, source, destinations[source], weight)
             except nx.NetworkXError:
                 paths = {}
             for dest, path in paths.items():
@@ -190,6 +194,44 @@ def _precompute_and_assign(link_specs: list[dict],
 
     # Populate the route cache for simulation-time use
     _populate_route_cache(link_specs, transport_network)
+
+
+def _dijkstra_to_targets(graph: nx.Graph, source, targets: set, weight: str) -> dict:
+    """Return shortest paths from *source* to the requested targets only."""
+    if source not in graph:
+        raise nx.NetworkXError(f"Source {source} not in graph")
+    remaining = set(targets)
+    distances = {}
+    seen = {source: 0}
+    predecessor = {source: None}
+    counter = count()
+    fringe = [(0, next(counter), source)]
+
+    while fringe and remaining:
+        distance, _, node = heappop(fringe)
+        if node in distances:
+            continue
+        distances[node] = distance
+        remaining.discard(node)
+        for neighbor, data in graph._adj[node].items():
+            cost = data.get(weight)
+            if cost is None:
+                continue
+            new_distance = distance + cost
+            if neighbor not in distances and (
+                neighbor not in seen or new_distance < seen[neighbor]
+            ):
+                seen[neighbor] = new_distance
+                predecessor[neighbor] = node
+                heappush(fringe, (new_distance, next(counter), neighbor))
+
+    paths = {}
+    for target in set(targets) - remaining:
+        path = [target]
+        while predecessor[path[-1]] is not None:
+            path.append(predecessor[path[-1]])
+        paths[target] = path[::-1]
+    return paths
 
 
 # ------------------------------------------------------------------
