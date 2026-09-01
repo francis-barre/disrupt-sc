@@ -52,6 +52,7 @@ WATERMARKED_CONFIG_KEYS = (
     "monetary_units_in_data",
     "monetary_units_in_model",
     "time_resolution",
+    "leontief_solver",
     # Agent / SC params
     "nb_suppliers_per_input",
     "weight_localization_firm",

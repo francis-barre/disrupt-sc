@@ -15,6 +15,7 @@ filepaths:
   # "input_criticality": null
 
 with_transport: True
+leontief_solver: direct
 
 # duration of simulation
 t_final: 10  # in time_resolution unit
@@ -88,7 +89,9 @@ logistics:
     waterways: 2
     airways: 2
     pipelines: 0
-  cost_of_time: 0.49 #USD/hour
+  # USD per ton-hour. May also be {cargo_type: value} or
+  # {mode: {cargo_type: value}, default: value}.
+  cost_of_time: 0.49
   name-specific:
     azerty: 0
 

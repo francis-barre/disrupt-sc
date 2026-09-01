@@ -37,6 +37,7 @@ class TransportParams:
 @dataclass(frozen=True)
 class SimParams:
     """Parameters that govern the simulation run."""
+    leontief_solver: str = "direct"
     t_final: int = 10
     epsilon_stop: float = 1e-3
     time_resolution: str = "week"
@@ -135,6 +136,7 @@ class LogisticsParams:
     loading_fees: dict = field(default_factory=dict)
     border_crossing_fees: dict = field(default_factory=dict)
     border_crossing_times: dict = field(default_factory=dict)
-    cost_of_time: float | dict = 0.49  # USD/(ton·hour); dict = per cargo type with 'default'
+    # USD/(ton·hour); dict may be per cargo or mode -> cargo, with 'default'
+    cost_of_time: float | dict = 0.49
     name_specific: dict = field(default_factory=dict)
     sector_to_cargo_type: dict = field(default_factory=dict)

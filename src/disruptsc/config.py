@@ -206,6 +206,12 @@ def build_params(config: dict) -> tuple[TransportParams, SimParams, AgentParams,
     logistics = config.get("logistics", {})
     cap_enabled, cap_mode = _parse_capacity_constraint(config.get("capacity_constraint", "off"))
 
+    leontief_solver = config.get("leontief_solver", "direct")
+    if leontief_solver not in ("direct", "gmres"):
+        raise ValueError(
+            f"leontief_solver must be 'direct' or 'gmres' (got {leontief_solver!r})"
+        )
+
     rationing_mode = config.get("rationing_mode", "equal")
     if rationing_mode not in ("equal", "household_first"):
         raise ValueError(
@@ -238,6 +244,7 @@ def build_params(config: dict) -> tuple[TransportParams, SimParams, AgentParams,
     )
 
     sim_params = SimParams(
+        leontief_solver=leontief_solver,
         t_final=config.get("t_final", 10),
         epsilon_stop=float(config.get("epsilon_stop_condition", 1e-3)),
         time_resolution=config.get("time_resolution", "week"),
