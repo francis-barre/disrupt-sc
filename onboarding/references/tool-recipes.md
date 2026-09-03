@@ -214,3 +214,87 @@ TEN-T multimodal connectors (endpoint-snapped). Rules learned on Romania:
   (location × sector) with the value as importance; zero/NaN dropped.
 - Run: `validate-inputs <Scope>` then `disruptsc <Scope> --simulation_type initial_state --open`.
   The flag is `--flow_coverage` (docs mentioning `--input_coverage` are stale, KI-04).
+
+---
+
+## 6. firm-extractor  (`<parent>/Firms/firm-extractor`, data library `<parent>/Firms/`)
+
+Per-scope YAML config, never edit-in-place (see `configs/example.yaml`). Long-format
+output: `region, sector, importance, name, source` — consumed by DisruptSC's long-form
+firms branch; after KI-17 the importance values set firm sizes proportionally.
+
+```bash
+cd <parent>/Firms/firm-extractor && pip install -e .
+firm-extractor sources            # adapters, data presence, fetch hints
+firm-extractor coverage cfg.yaml  # dry-run: sector -> source proposal
+firm-extractor build cfg.yaml     # firms.geojson + *_coverage.csv
+```
+
+Key rules baked into the tool:
+- ONE source per sector (ordered preference list): importance is relative within a
+  region_sector, so units cancel — but only if bases are never mixed there.
+- Grid sources (mapspam) are zonal-aggregated to the scope's admin POLYGONS (the
+  geoBoundaries files from phase 6 step 3, not the household points), then placed at
+  `weighted_centroid` (default) / `max_cell` / `representative_point`.
+- Concordances in `<repo>/concordance/*_to_icio.csv` target ICIO 2025 native codes
+  (A01 crops, B05 coal, B07 metal ores, C24A/C24B basic metals, D power). Copy +
+  rewrite the `sector` column for aggregated schemes; `mine:*`/`proc:*`/`*` wildcards
+  are matched after exact codes.
+- Adapters: `jasansky` (weight = latest-year production, then capacity, then presence;
+  Region/Company pseudo-facilities dropped), `mapspam` (`_A` rasters only),
+  `gem_power` (the 8 per-technology GEM power trackers in `<parent>/Firms/GEM/`;
+  operating units, MW; validated on Romania 2026-08-31: 639 units, 20.8 GW ≈ national
+  total, Cernavodă/Iron-Gate shares exact; small-hydro under tracker thresholds missing),
+  `gem_steel` (GIST plant-level; reported production > capacity), `gem_cement` (GCCT;
+  production > cement > clinker capacity; Romania: 9 plants / 15.4 Mtpa = the full industry).
+- **Vintage trap**: GEM status is "today", the MRIO is usually 2020–2022. Set
+  `source_options: {gem_steel: {statuses: [... mothballed...], reference_year: <MRIO yr>}}`
+  or plants idled since the MRIO year vanish — Romania: default 3 mills/1.0 Mt vs vintage
+  5 mills/3.5 Mt with Liberty Galați restored at its 2022-era 1.6 Mt (≈ national output).
+  Decide at the phase-6 checkpoint, per scope.
+- Data caveats live in `Firms/README.md` and KI-18/19/20 — CEADS swapped lat/lon +
+  suspect units, GID no-coordinates/licensing, Maus payload not downloaded.
+- `manual` adapter: per-scope CSV of hand-curated anchor facilities
+  (`source_options: {manual: {csv: <Scope>/Spatial/sources/manual_firms.csv}}`,
+  columns `sector,name,lon,lat,weight[,iso3,unit,note]`; sector used as-is, no
+  concordance). Use for flagship few-plant sectors no database sees (automotive,
+  shipyards, a mis-weighted chemicals anchor); every row's figure needs a source in
+  `note`, and the CSV is a **user checkpoint** — the human vouches for the rows.
+- `climatetrace` adapter (API, no download): facility points + MODELLED activity/capacity
+  per year 2021–2026 from api.climatetrace.org (CC-BY-4.0), 23 default subsectors spanning
+  most manufacturing/mining/fossil ICIO sectors; set `source_options: {climatetrace:
+  {reference_year: <MRIO yr>, subsectors: [...]}}` — the year matters (Alro Slatina 2022:
+  105 kt vs 2024: 59 kt). Country-aggregate pseudo-assets are auto-dropped. Romania check:
+  closes C24B (Slatina + Tulcea alumina) and C19 (all 4 refineries, plausible crude-run
+  ranking) in one source; per-facility confidence is often "low" — use for relative
+  within-sector weights, verify totals nationally.
+- `gem_coalmine` adapter: Coal Mine Tracker "Non-closed mines" + built-in "Historic
+  Production (2018-2025)" sheet - `reference_year` gives exact-year reported output per
+  mine (Romania 2022: 7 mines, 16.7 Mt = national lignite). NOTE the tracker's 'ISO Code'
+  column is NUMERIC ISO 3166-1; countries are matched by name via the shared GEM map.
+  Prefer over climatetrace for B05.
+- `gem_goget` adapter: GOGET "Field-level main data" + long production table
+  ("Quantity (converted)" per Unit ID x Data Year); weight = reference_year production,
+  else the field's latest year, else presence. Covers only large fields (Romania: ~half
+  of national gas output) - still far better than population for B06.
+- `regional_stats` adapter: any (admin x sector) table (employment, GVA) -> one point per
+  admin unit per sector at the polygon's representative point. IDENTITY_CONCORDANCE: the
+  CSV carries scope sector codes; section->sectors expansion happens at CSV build where it
+  is reviewable. Admin names matched after case/diacritic normalization, unmatched names
+  fail loudly. For EU scopes `scripts/eurostat_nuts3_employment.py` fetches NUTS3
+  employment (nama_10r_3empers) and applies the expansion map in one command - this is the
+  systematic replacement of population weights for services + dispersed manufacturing.
+- Romania-style extras for `regional_stats`: its `csv` option accepts a LIST of long-format
+  files (e.g. Eurostat employment + an INS table). `scripts/ins_tempo_fetch.py` pulls any
+  county-level INS Tempo (Romania) matrix into that format with zero manual download - the
+  pivot endpoint needs the `encQuery` form (colon-separated dims, comma-separated
+  nomItemIds); the JSON `arr` form silently returns an empty pivot. Forestry example:
+  AGR306A (harvested wood by county) -> A02 weights; the script strips "Municipiul "
+  prefixes so Bucharest matches the polygon names.
+- `osm_landuse` adapter: extraction-site footprints (B08) without the Copernicus-gated
+  CLC download - reads `landuse=quarry` multipolygons from the scope's Geofabrik PBF
+  (usually already on disk from phase 5), area-weighted (km2, EPSG:8857). CRITICAL:
+  the largest OSM "quarries" are open-pit coal/metal mines (Romania: Jilt 16.6 km2) -
+  always set `exclude_from` (drops polygons within radius_km of another source's mine
+  points; tag/name filters alone are insufficient, only 2/782 Romanian pits carried a
+  resource tag). Romania after exclusion: 743 quarries, 125 km2, max 3.7 km2.

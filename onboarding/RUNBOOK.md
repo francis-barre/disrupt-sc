@@ -25,6 +25,7 @@ and prints clone commands for anything missing.
 | osm-extractor | `<parent>/transport/transnet/osm-extractor` | `git clone https://github.com/ccolon/osm-extractor` + `pip install -e` |
 | transnet-simp (CLI `tnclean`) | `<parent>/transport/transnet/transnet-simp` | `git clone https://github.com/ccolon/transnet-simp` + `pip install -e` |
 | multitnbuild | `<parent>/transport/transnet/multitnbuild` | `git clone https://github.com/ccolon/multi-tn-build` + `pip install -e` |
+| firm-extractor | `<parent>/Firms/firm-extractor` (data library = `<parent>/Firms/`, see its README) | `git clone https://github.com/ccolon/firm-extractor` + `pip install -e` |
 | Multimodal builder | `<data-root>/build_transport.py` + per-scope `Transport/multimodal_config.yml` | comes with the data root |
 
 Tool repos are searched in close locations (`<parent>`, `<parent>/MRIO`,
@@ -36,6 +37,7 @@ Supporting material in this folder (script commands below are run from `onboardi
 - `references/failure-triage.md` — runtime error → cause → fix for phase 7.
 - `references/validation-report.md` — phase 8 method: model-vs-data comparisons, data sources, report structure. **Read before phase 8.**
 - `references/known-issues.md` — register of tool/model defects. Consult at each phase; append when new ones surface.
+- `references/firm-data-sources.md` — survey of open plant/grid production datasets for the phase-6 firm-level path.
 - `scripts/` — deterministic helpers (`check_env.py`, `mrio_coverage.py`, `geofabrik.py`, `build_spatial.py`, `check_scope.py`, `validation_metrics.py`, `eurostat_mode_targets.py`).
 
 ## Standing rules
@@ -183,10 +185,10 @@ Follow recipes §2–3 exactly. Summary:
 
 ### Phase 6 — spatial disaggregation (workflow I + J)
 
-1. **Checkpoint**: are firm-level data available for the scope?
-   - **Yes** → custom path, deliberately out of scope for now (workflow J): record what data exist
-     in the manifest, ask whether to proceed with the default meanwhile.
-   - **No** → default path below.
+1. **Checkpoint**: use firm/plant/grid-level production data for firms?
+   - **Yes** → firm-level path (steps 6–9), which still uses steps 2–3 for admin
+     boundaries and households, and falls back to the default per uncovered sector.
+   - **No** → default path (steps 2–5 only).
 2. Propose an admin level for disaggregation (admin-1 for most countries; admin-2 for small or
    data-rich ones; keep total points ~50–300 per country). **Checkpoint**: confirm level and the
    population source (user-supplied CSV per admin unit / a population field in the boundary file /
@@ -203,6 +205,26 @@ Follow recipes §2–3 exactly. Summary:
    which trade with that partner actually flows, and **near a roads edge** (points snap to the
    nearest roads node). Build a `bloc,lon,lat` CSV from phase-2/3 research, then
    `build_spatial.py countries --mrio ... --points ... --out <Scope>/Spatial/countries.geojson`.
+
+**Firm-level path** (tool: `firm-extractor`, data library `<parent>/Firms/` — see its README
+and `references/tool-recipes.md` §6):
+6. `firm-extractor sources` (adapter/data inventory), then write the per-scope config from
+   `firm-extractor/configs/example.yaml` — admin **polygons** from step 3, the scope's
+   sector_table, households as fallback — and run `firm-extractor coverage <cfg>`. Present the
+   sector×source proposal using the defensibility ladder: facility production > facility
+   capacity > modelled activity (Climate TRACE) > sector grid (SPAM, EDGAR) > non-residential
+   built volume (GHS NRES) > population fallback.
+7. **Checkpoints**: source per sector; grid placement rule (`weighted_centroid` default /
+   `max_cell` / `representative_point`); review the concordance CSVs — copy and rewrite their
+   `sector` column whenever the scope aggregates or renames sectors (watch jasansky's
+   `proc:Processing` hitting the `proc:*` wildcard); approve any dataset fetches (GEM trackers
+   are form-gated — the user downloads them into `<parent>/Firms/GEM/`).
+8. `firm-extractor build <cfg>` → long-format firms.geojson + `*_coverage.csv`. Copy to
+   `<Scope>/Spatial/firms.geojson`; snapshot the config and coverage table into the manifest
+   under `firm_level:`.
+9. Validate: `check_scope.py` (long form accepted), coverage shares sanity-checked against
+   national totals (USGS/FAO/national statistics — web-check), and note the point weights now
+   set firm sizes, not just locations (KI-17, disrupt-sc ≥ 2026-08-31).
 
 ### Phase 7 — assemble, validate, run (workflow K)
 

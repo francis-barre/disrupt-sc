@@ -96,6 +96,39 @@ def resolve_repo_prefix(value):
 # Build param bundles from config dict
 # ---------------------------------------------------------------------------
 
+def _parse_sector_list(raw) -> tuple:
+    """``sectors_to_exclude`` as a tuple of sector codes.
+
+    YAML parses an unquoted ``None`` as the STRING "None" (only null/~ are
+    null), and ``tuple("None")`` is ``('N', 'o', 'n', 'e')`` - which silently
+    excluded every sector literally named ``N`` (ICIO: administrative and
+    support services) from every scope built on the shipped default.yaml
+    (Romania 2026-08/09 runs, EU smoke run 20260903_072310). Accept
+    None/"None"/"none"/"" as empty and reject a bare string otherwise, so a
+    typo cannot become a per-character sector filter again."""
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        if raw.strip().lower() in ("", "none", "null", "~"):
+            return ()
+        raise ValueError(
+            f"sectors_to_exclude must be a list of sector codes (got the string {raw!r})"
+        )
+    return tuple(str(s) for s in raw)
+
+
+def _parse_country_attachment(raw) -> str:
+    """Validate ``country_attachment``: 'roads' (legacy, nearest road node)
+    or 'any' (nearest node of any mode, so sea-placed blocs attach to the
+    maritime layer). Typos raise instead of silently keeping the legacy rule."""
+    value = str(raw).strip().lower()
+    if value not in ("roads", "any"):
+        raise ValueError(
+            f"country_attachment must be 'roads' or 'any' (got {raw!r})"
+        )
+    return value
+
+
 def _parse_capacity_constraint(raw) -> tuple[bool, str]:
     """Return (enabled, mode) from the capacity_constraint config value.
 
@@ -231,6 +264,7 @@ def build_params(config: dict) -> tuple[TransportParams, SimParams, AgentParams,
         sectors_no_transport=tuple(config.get("sectors_no_transport_network",
                                               ["utility", "transport", "trade", "services", "service", "construction"])),
         countries_no_transport=tuple(config.get("countries_no_transport") or ()),
+        country_attachment=_parse_country_attachment(config.get("country_attachment", "roads")),
         use_cargo_types=bool(config.get("use_cargo_types", True)),
         monetary_units=config.get("monetary_units_in_model", "mUSD"),
         chunk_size=_parse_chunk_size(logistics, config.get("time_resolution", "week")),
@@ -283,7 +317,7 @@ def build_params(config: dict) -> tuple[TransportParams, SimParams, AgentParams,
         enable_household_inventories=config.get("enable_household_inventories", False),
         firm_data_type=config.get("firm_data_type", "mrio"),
         sectors_to_include=config.get("sectors_to_include", "all"),
-        sectors_to_exclude=tuple(config.get("sectors_to_exclude") or []),
+        sectors_to_exclude=_parse_sector_list(config.get("sectors_to_exclude")),
         countries_to_include=config.get("countries_to_include", "all"),
         explicit_service_firm=config.get("explicit_service_firm", True),
         monetary_units_in_model=config.get("monetary_units_in_model", "mUSD"),
