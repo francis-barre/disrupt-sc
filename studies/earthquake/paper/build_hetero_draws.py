@@ -32,7 +32,7 @@ declared valid here really can absorb the shock in the run that destroys it.
 
 Usage
 -----
-    python build_hetero_draws.py --run <run_dir> --out <dir> [--total 2438.7]
+    python build_hetero_draws.py --run <run_dir> --out <dir> [--total 2510.1]
 """
 from __future__ import annotations
 
@@ -289,6 +289,10 @@ def build(resolution: str, cap: pd.Series, adj: dict, total: float) -> pd.DataFr
     df = pd.DataFrame(rows, columns=["draw_id", "units", "n_units", "group_capital_mUSD"])
     df.insert(0, "resolution", resolution)
     df["destroyed_fraction"] = total / df["group_capital_mUSD"]
+    # Stamp the build total so the draw list is self-describing: run_hetero.py
+    # derives its destroyed total from this column and refuses a mismatching
+    # explicit --total (the partition is only valid for the total it was built at).
+    df["total_mUSD"] = total
     return df
 
 
@@ -298,7 +302,7 @@ def main() -> None:
     ap.add_argument("--run", required=True, type=Path, help="run dir holding firm_data.csv and firm_table.geojson")
     ap.add_argument("--adjacency", type=Path,
                     default=Path(r"C:/Users/Celian/OneDrive/WorldBank/Ecuador/Data/Structured/Admin/canton_adjacency.json"))
-    ap.add_argument("--total", type=float, default=2438.7, help="destroyed capital, mUSD")
+    ap.add_argument("--total", type=float, default=2510.1, help="destroyed capital, mUSD")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
 

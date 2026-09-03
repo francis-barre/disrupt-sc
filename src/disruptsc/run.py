@@ -35,7 +35,10 @@ _LARGE_STACK_SIZE = 64 * 1024 * 1024  # 64 MB
 _NEEDS_LARGE_STACK = sys.platform == "win32"
 
 from disruptsc import paths
-from disruptsc.config import load_config, build_params, setup_output, setup_logging
+from disruptsc.config import (
+    load_config, build_params, setup_output, setup_logging, SIMU_TYPES_WITH_EXPORT,
+    attach_run_log, detach_run_log,
+)
 
 from disruptsc.init_pipeline.load_data import (
     load_mrio, load_sector_table, load_usd_per_ton, filter_sectors,
@@ -52,7 +55,7 @@ from disruptsc.init_pipeline.routing import setup_logistic_routes
 
 from disruptsc.run_pipeline.cache import (
     setup_cache_isolation,
-    parse_cache_arg,
+    parse_cache_arg, CACHE_LEVELS,
     cache_transport_network, load_cached_transport_network,
     cache_agents, load_cached_agents,
     cache_sc_network, load_cached_sc_network,
@@ -63,6 +66,10 @@ from disruptsc.run_pipeline.simulate import (
     set_initial_conditions, prepare_disruption_baseline, continue_disruption_run,
 )
 from disruptsc.run_pipeline.disruption import parse_disruptions
+from disruptsc.run_pipeline.fingerprint import (
+    build_fingerprint, fingerprint_hash, save_fingerprint,
+    load_fingerprint, diff_fingerprints, build_stage_fingerprint,
+)
 from disruptsc.run_pipeline.export import (
     export_transport_flows, export_summary, export_logistics_report,
     export_initial_state, export_static_tables, export_mrio_summary,
@@ -121,6 +128,8 @@ def _main_impl():
         config["flow_coverage"] = args.flow_coverage
     if args.seed is not None:
         config["seed"] = args.seed
+    if args.open:
+        config["export_files"] = True
 
     return execute(config, cache=args.cache,
                    cache_isolation=args.cache_isolation, open_report=args.open)
@@ -141,7 +150,27 @@ def execute(config: dict, *, cache: str | None = None,
     logging.info(f"DisruptSC v2 — scope={scope}")
 
     tp, sp, ap, lp = build_params(config)
+
+    # Seed Python's `random` and numpy.random for every RNG-driven stage:
+    # supplier selection during the supply-chain build, and Monte-Carlo
+    # disruption arrival (transport_disruption_probability). Seeding must
+    # happen HERE, not inside the sc_network cache-miss branch — a run that
+    # reloads the network from cache still draws disruption arrivals, and
+    # used to do so unseeded. Nothing between here and the supply-chain
+    # build consumes randomness, so fresh-build draws are unchanged for a
+    # given seed. When sp.seed is None we leave the global RNGs alone
+    # (legacy non-reproducible behavior).
+    if sp.seed is not None:
+        import random as _random
+        _random.seed(sp.seed)
+        np.random.seed(sp.seed)
+        logging.info(f"Seeded RNGs with seed={sp.seed}")
+
     cache_flags = parse_cache_arg(cache)
+    # Per-stage fingerprints: stored inside each cache pickle at save time and
+    # validated at load time, so a cache built under different watermarked
+    # settings (or a different scope) is refused instead of silently reused.
+    stage_fps = {level: build_stage_fingerprint(config, level) for level in CACHE_LEVELS}
     if cache_isolation:
         setup_cache_isolation(scope)
     if export_folder is None:
@@ -151,6 +180,20 @@ def execute(config: dict, *, cache: str | None = None,
         export_folder.mkdir(parents=True, exist_ok=True)
         with open(export_folder / "parameters.yaml", "w") as f:
             yaml.dump(config, f, default_flow_style=False)
+
+    # Provenance stamp: code version + git SHA + the watermarked config keys,
+    # written next to parameters.yaml for EVERY exporting run (criticality
+    # writes its own sidecar in its per-run subfolder). Results can then be
+    # attributed to an exact code revision after the fact.
+    if export_folder:
+        attach_run_log(export_folder)   # archive this run's log as exp.log
+        fp_payload = build_fingerprint(config)
+        save_fingerprint(fp_payload, export_folder / "run_fingerprint.json")
+        logging.info(
+            f"Run fingerprint {fingerprint_hash(fp_payload)[:8]} "
+            f"(version={fp_payload.get('version')}, "
+            f"git_sha={(fp_payload.get('git_sha') or 'unknown')[:12]})"
+        )
 
     filepaths = config.get("filepaths", {})
     transport_modes = config.get("transport_modes", ["roads"])
@@ -171,7 +214,8 @@ def execute(config: dict, *, cache: str | None = None,
     # ------------------------------------------------------------------
     if cache_flags["transport_network"]:
         logging.info("Loading transport network from cache")
-        transport_network, transport_edges, transport_nodes = load_cached_transport_network()
+        transport_network, transport_edges, transport_nodes = load_cached_transport_network(
+            scope=scope, stage_fp=stage_fps["transport_network"])
     else:
         logging.info("Building transport network")
         transport_network, transport_edges, transport_nodes = build_transport_network(
@@ -180,7 +224,8 @@ def execute(config: dict, *, cache: str | None = None,
             default_transport_capacity=config.get("default_transport_capacity"),
             use_cargo_types=tp.use_cargo_types,
         )
-        cache_transport_network(transport_network, transport_edges, transport_nodes)
+        cache_transport_network(transport_network, transport_edges, transport_nodes,
+                                scope=scope, stage_fp=stage_fps["transport_network"])
 
     # ------------------------------------------------------------------
     # Stage 2: Agents
@@ -188,7 +233,8 @@ def execute(config: dict, *, cache: str | None = None,
     selection = None  # flow-coverage Selection (set when building fresh)
     if cache_flags["agents"]:
         logging.info("Loading agents from cache")
-        mrio, sector_table, firms, firm_table, households, household_table, countries = load_cached_agents()
+        mrio, sector_table, firms, firm_table, households, household_table, countries = load_cached_agents(
+            scope=scope, stage_fp=stage_fps["agents"])
         _configure_households(households)
     else:
         logging.info("Building agents")
@@ -236,7 +282,8 @@ def execute(config: dict, *, cache: str | None = None,
             countries_no_transport=tp.countries_no_transport,
         )
 
-        cache_agents(firms, households, countries, mrio, sector_table, firm_table, household_table)
+        cache_agents(firms, households, countries, mrio, sector_table, firm_table, household_table,
+                     scope=scope, stage_fp=stage_fps["agents"])
 
     # Export MRIO summary (for reporting comparison)
     if export_folder:
@@ -248,20 +295,12 @@ def execute(config: dict, *, cache: str | None = None,
     # ------------------------------------------------------------------
     if cache_flags["sc_network"]:
         logging.info("Loading SC network from cache")
-        sc_network, firms, households, countries = load_cached_sc_network()
+        sc_network, firms, households, countries = load_cached_sc_network(
+            scope=scope, stage_fp=stage_fps["sc_network"])
         _configure_households(households)
     else:
         logging.info("Building supply chain network")
-        # Seed Python's `random` and numpy.random for reproducible
-        # supplier-selection draws. This is the *only* RNG-driven stage
-        # in the model (besides Monte-Carlo disruption arrival). When
-        # sp.seed is None we leave the global RNGs alone (legacy
-        # non-reproducible behavior).
-        if sp.seed is not None:
-            import random as _random
-            _random.seed(sp.seed)
-            np.random.seed(sp.seed)
-            logging.info(f"Seeded RNGs with seed={sp.seed} before supply-chain build")
+        # RNGs were seeded at the top of execute() (when sp.seed is set).
         # When cargo types are disabled, force every commercial link to use
         # the single "any" bucket — so the routing pipeline runs Dijkstra/LP
         # once instead of once per cargo type.
@@ -274,7 +313,8 @@ def execute(config: dict, *, cache: str | None = None,
             ap.weight_localization_household,
             effective_cargo_mapping, transport_network,
         )
-        cache_sc_network(sc_network, firms, households, countries)
+        cache_sc_network(sc_network, firms, households, countries,
+                         scope=scope, stage_fp=stage_fps["sc_network"])
 
     # Auto-shrink: prune transport-network cargo types to those actually used
     # by the supply chain. No-op when only one cargo type is present. Done
@@ -300,7 +340,8 @@ def execute(config: dict, *, cache: str | None = None,
     # ------------------------------------------------------------------
     if cache_flags["logistic_routes"]:
         logging.info("Loading logistic routes from cache")
-        sc_network, transport_network, cl_table, firms, households, countries = load_cached_logistic_routes()
+        sc_network, transport_network, cl_table, firms, households, countries = load_cached_logistic_routes(
+            scope=scope, stage_fp=stage_fps["logistic_routes"])
         _configure_households(households)
     else:
         if tp.with_transport:
@@ -308,12 +349,13 @@ def execute(config: dict, *, cache: str | None = None,
             cl_table = setup_logistic_routes(
                 sc_network, transport_network, firms, countries,
                 tp,
-                max_capacity_iterations=config.get("capacity_routing_max_iterations", 10),
+                max_capacity_iterations=config.get("capacity_routing_max_iterations", 3),
                 export_folder=export_folder,
             )
         else:
             cl_table = None
-        cache_logistic_routes(sc_network, transport_network, cl_table, firms, households, countries)
+        cache_logistic_routes(sc_network, transport_network, cl_table, firms, households, countries,
+                              scope=scope, stage_fp=stage_fps["logistic_routes"])
 
     # ------------------------------------------------------------------
     # Stage 5: Run simulation
@@ -359,10 +401,6 @@ def execute(config: dict, *, cache: str | None = None,
 
     elif sim_type == "criticality":
         import copy
-        from disruptsc.run_pipeline.fingerprint import (
-            build_fingerprint, fingerprint_hash, save_fingerprint,
-            load_fingerprint, diff_fingerprints,
-        )
         crit_cfg = config.get("criticality", {})
         duration = crit_cfg.get("duration", 4)
         t_final = sp.t_final if sp.t_final else duration + 2
@@ -505,8 +543,17 @@ def execute(config: dict, *, cache: str | None = None,
     # ------------------------------------------------------------------
     if export_folder and open_report:
         _generate_and_open_report(sim_type, export_folder)
+    elif open_report:
+        if sim_type not in SIMU_TYPES_WITH_EXPORT:
+            reason = f"simulation_type={sim_type} has no exports"
+        elif sp.is_monte_carlo:
+            reason = "Monte Carlo runs have no per-run export folder"
+        else:
+            reason = "export_files is disabled"
+        logging.warning(f"--open requested but no report generated: {reason}")
 
     logging.info("Done.")
+    detach_run_log()
     return export_folder
 
 
@@ -553,9 +600,21 @@ def _run_monte_carlo(sc_network, transport_network, firms, households, countries
     mc_path = out_dir / f"disruption_{ts}_pid{os.getpid()}.csv"
     writer = MCWriter(mc_path)
 
+    # Provenance sidecar next to the consolidated CSV (MC runs have no
+    # per-run export folder, so this is their only code-revision record).
+    save_fingerprint(build_fingerprint(config),
+                     mc_path.with_name(mc_path.stem + ".fingerprint.json"))
+
     logging.info(f"Monte Carlo: {sp.mc_repetitions} repetitions")
     for i in range(sp.mc_repetitions):
         logging.info(f"--- MC iteration {i + 1}/{sp.mc_repetitions} ---")
+        # Derived per-iteration seed: repetition i is reproducible on its
+        # own (seed + i), instead of depending on how far the global RNG
+        # stream happened to advance in earlier iterations.
+        if sp.seed is not None:
+            import random as _random
+            _random.seed(sp.seed + i)
+            np.random.seed(sp.seed + i)
         all_data = run_disruption(
             sc_network, transport_network, firms, households, countries,
             tp, sp, config.get("disruptions"), transport_edges, firm_table, sp.t_final,

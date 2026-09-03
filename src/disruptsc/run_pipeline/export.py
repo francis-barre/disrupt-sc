@@ -78,12 +78,14 @@ FIRM_COLUMNS = [
     "active_capital", "idle_capital",
     "product_stock", "total_order", "total_input", "rationing",
     "profit", "price", "delta_price_input",
+    "reconstruction_sales", "imports", "input_consumed", "input_stock",
 ]
 
 HOUSEHOLD_COLUMNS = [
     "time_step", "household", "region",
     "tot_consumption", "tot_spending",
     "consumption_loss", "extra_spending",
+    "imports", "inventory_total",
 ]
 
 HOUSEHOLD_BY_SECTOR_COLUMNS = [
@@ -95,6 +97,7 @@ HOUSEHOLD_BY_SECTOR_COLUMNS = [
 COUNTRY_COLUMNS = [
     "time_step", "country",
     "extra_spending", "consumption_loss",
+    "qty_sold", "qty_received",
     "generalized_transport_cost",
     "usd_transported", "tons_transported", "tonkm_transported",
 ]
@@ -624,8 +627,9 @@ def export_mrio_summary(mrio, selected, export_folder: Path):
     imports_per_country = {}
     exports_per_country = {}
     for c in countries:
-        if import_label and (c, import_label) in mrio.index:
-            imports_per_country[c] = float(mrio.loc[(c, import_label), selected].sum())
+        c_rows = [r for r in mrio.index if r[0] == c]
+        if c_rows:
+            imports_per_country[c] = float(mrio.loc[c_rows, selected].sum().sum())
         if export_label and (c, export_label) in mrio.columns:
             exports_per_country[c] = float(mrio.loc[selected, (c, export_label)].sum())
     by_country = pd.DataFrame({

@@ -46,6 +46,7 @@ class Country:
 
     # --- Per-timestep tracking ---
     qty_sold: float = 0.0
+    qty_received: float = 0.0  # goods received from domestic firms this step (exports of the modeled economy)
     generalized_transport_cost: float = 0.0
     usd_transported: float = 0.0
     tons_transported: float = 0.0
@@ -66,6 +67,7 @@ class Country:
 
     def reset_variables(self):
         self.qty_sold = 0.0
+        self.qty_received = 0.0
         self.generalized_transport_cost = 0.0
         self.usd_transported = 0.0
         self.tons_transported = 0.0
@@ -85,20 +87,28 @@ class Country:
                 tp: TransportParams,
                 routing_event_collector=None):
         """Export/deliver products to firms and households."""
+        # Book realized_delivery, not link.delivery: multi-route links can drop
+        # blocked chunks, so realized < planned. Tons are scaled accordingly.
+        def _realized_tons(link):
+            if link.delivery > EPSILON:
+                return link.delivery_in_tons * link.realized_delivery / link.delivery
+            return 0.0
+
         def _after_delivery(link):
-            self.qty_sold += link.delivery
+            self.qty_sold += link.realized_delivery
 
         def _after_shipment(link, route):
-            self.qty_sold += link.delivery
-            self.usd_transported += link.delivery
-            self.tons_transported += link.delivery_in_tons
+            self.qty_sold += link.realized_delivery
+            self.usd_transported += link.realized_delivery
+            self.tons_transported += _realized_tons(link)
             if hasattr(route, 'length'):
-                self.tonkm_transported += link.delivery_in_tons * route.length
+                self.tonkm_transported += _realized_tons(link) * route.length
 
         for _, client, data in sc_network.out_edges(self, data=True):
             link: CommercialLink = data["object"]
             # Country delivers whatever was ordered (unlimited supply from outside)
             link.delivery = link.order
+            link.served_order = link.order
             link.delivery_in_tons = link.delivery * self.monetary_unit_factor / self.usd_per_ton if self.usd_per_ton > 0 else 0.0
             link.reset_transport_tracking()
 
@@ -129,6 +139,8 @@ class Country:
             link: CommercialLink = data["object"]
             collect_shipment_from_node(self.od_point, link, transport_network, sectors_no_transport)
             quantity_received = link.realized_delivery
+            if supplier.__class__.__name__ == "Firm":
+                self.qty_received += quantity_received
             # Track losses
             expected = self.purchase_plan.get(supplier.pid, 0.0)
             if expected > EPSILON and quantity_received < expected - EPSILON:
@@ -148,6 +160,8 @@ class Country:
             "country": self.pid,
             "extra_spending": self.extra_spending,
             "consumption_loss": self.consumption_loss,
+            "qty_sold": self.qty_sold,
+            "qty_received": self.qty_received,
             "generalized_transport_cost": self.generalized_transport_cost,
             "usd_transported": self.usd_transported,
             "tons_transported": self.tons_transported,

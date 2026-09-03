@@ -42,16 +42,21 @@ dependencies = [
     # Scientific computing
     "scipy>=1.7.0",
 
+    # Parquet I/O (MRIO tables can be .parquet)
+    "pyarrow>=10.0",
+
+    # HTML reports (reporting/ imports plotly at module level)
+    "plotly>=5.0",
     # Configuration and utilities
     "PyYAML>=5.3.0,<7.0",
     "tqdm>=4.60.0,<5.0"
 ]
 
 [project.urls]
-Homepage = "https://github.com/ccolon/disruptsc"
-Documentation = "https://ccolon.github.io/disruptsc"
-Repository = "https://github.com/ccolon/disruptsc.git"
-Issues = "https://github.com/ccolon/disruptsc/issues"
+Homepage = "https://github.com/ccolon/disrupt-sc"
+Documentation = "https://ccolon.github.io/disrupt-sc"
+Repository = "https://github.com/ccolon/disrupt-sc.git"
+Issues = "https://github.com/ccolon/disrupt-sc/issues"
 
 [project.scripts]
 disruptsc = "disruptsc.run:main"
@@ -66,10 +71,18 @@ dev = [
     "mypy",
     "pre-commit",
 ]
+# Kept in sync with docs-requirements.txt (the file CI installs from) so
+# `pip install -e ".[docs]" && mkdocs build` works locally too.
 docs = [
-    "mkdocs",
-    "mkdocs-material",
-    "mkdocstrings[python]",
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.4.0",
+    "mkdocstrings[python]>=0.23.0",
+    "mkdocs-autorefs>=0.5.0",
+    "mkdocs-section-index>=0.3.0",
+    "mkdocs-macros-plugin>=1.0.0",
+    "mike>=1.1.0",
+    "mkdocstrings-python>=1.7.0",
+    "pymdown-extensions>=10.3.0",
 ]
 jupyter = [
     "jupyter",
@@ -107,7 +120,11 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--cov=src/disruptsc --cov-report=html --cov-report=term-missing"
+# Make `pytest` work from a bare clone: the src layout is put on sys.path here,
+# and coverage is opt-in (it used to be forced via addopts, which made every
+# run fail wherever pytest-cov wasn't installed):
+#   pytest --cov=src/disruptsc --cov-report=term-missing
+pythonpath = ["src"]
 
 [tool.mypy]
 python_version = "3.10"

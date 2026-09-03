@@ -102,6 +102,8 @@ class Firm:
     reconstruction_demand: float = 0.0       # capital-good output requested for rebuilding this step
     reconstruction_produced: float = 0.0     # output actually allocated to rebuilding this step
     reconstruction_sales: float = 0.0        # revenue for that output (investment-financed, not a client sale)
+    imports: float = 0.0                     # inputs received from country agents this step
+    input_consumed: float = 0.0              # inputs actually drawn from inventory this step (true intermediate use)
     capital_demanded: float = 0.0            # own capital the firm wants rebuilt (privately) this step
     public_capital_demanded: float = 0.0     # own capital rebuilt publicly (directly) this step
 
@@ -236,19 +238,25 @@ class Firm:
     def update_supplier_satisfaction(self, sc_network: ScNetwork,
                                      smoothing: float = SATISFACTION_SMOOTHING):
         """Update each supplier's satisfaction = EMA of its realized fill rate
-        (delivery / order on that link). This feeds the NEXT step's adaptive
+        (delivery / served_order on that link). This feeds the NEXT step's adaptive
         supplier-weight substitution: a supplier that persistently under-delivers
         loses weight, so buyers shift orders toward reliable suppliers of the same
         input. Call AFTER deliver(). Suppliers not ordered from this step keep their
-        prior satisfaction (no order ⇒ no new signal, avoids recovery oscillation)."""
+        prior satisfaction (no order ⇒ no new signal, avoids recovery oscillation).
+
+        The denominator is ``served_order`` — the order this step's delivery was
+        actually serving — not ``link.order``, which step 4 already overwrote
+        with the NEXT step's order (same epoch fix as the order-book delivery
+        fix): dividing by the fresh order rewards a supplier whose client just
+        cut its order and penalizes one whose client raised it."""
         for supplier, _, data in sc_network.in_edges(self, data=True):
             info = self.suppliers.get(supplier.pid)
             if info is None:
                 continue
             link: CommercialLink = data["object"]
-            if link.order < EPSILON:
+            if link.served_order < EPSILON:
                 continue
-            rate = min(1.0, link.delivery / link.order)
+            rate = min(1.0, link.delivery / link.served_order)
             info["satisfaction"] = smoothing * rate + (1.0 - smoothing) * info.get("satisfaction", 1.0)
 
     # ------------------------------------------------------------------
@@ -274,6 +282,7 @@ class Firm:
         matrix + threshold ⇒ survey weights among material inputs only (saturates);
         threshold only ⇒ cost-share proxy (material ⇒ critical); neither ⇒ strict
         Leontief (every input binds). Inputs are consumed in proportion to output."""
+        self.input_consumed = 0.0
         if self.production_target < EPSILON:
             self.production = 0.0
             return
@@ -303,10 +312,12 @@ class Firm:
 
         self.production = max(0.0, min(self.production_target, max_production))
 
-        # Consume inputs
+        # Consume inputs (a depleted non-critical input caps its own use at what is left)
         for input_id, coef in self.input_mix.items():
             consumed = coef * self.production
-            self.inventory[input_id] = max(0.0, self.inventory.get(input_id, 0.0) - consumed)
+            available = self.inventory.get(input_id, 0.0)
+            self.input_consumed += min(consumed, available)
+            self.inventory[input_id] = max(0.0, available - consumed)
 
         self.product_stock += self.production
 
@@ -320,11 +331,16 @@ class Firm:
                 tp: TransportParams,
                 routing_event_collector=None):
         """Ration and deliver to all clients."""
+        # Deduct realized_delivery, NOT link.delivery: for multi-route links a
+        # blocked/too-expensive chunk is dropped, so realized < planned — the
+        # undeliverable portion must stay in stock rather than vanish. On every
+        # fully-delivered path realized_delivery == delivery, so this is a
+        # strict generalization.
         def _after_delivery(link):
-            self.product_stock = max(0.0, self.product_stock - link.delivery)
+            self.product_stock = max(0.0, self.product_stock - link.realized_delivery)
 
         def _after_shipment(link, route):
-            self.product_stock = max(0.0, self.product_stock - link.delivery)
+            self.product_stock = max(0.0, self.product_stock - link.realized_delivery)
 
         self._evaluate_quantities_to_deliver(sc_network, tp.rationing_mode)
         for _, client, data in sc_network.out_edges(self, data=True):
@@ -370,6 +386,7 @@ class Firm:
         placed, and silently received as zero.
         """
         self.total_input = 0.0
+        self.imports = 0.0
         for supplier, _, data in sc_network.in_edges(self, data=True):
             link: CommercialLink = data["object"]
             if (not with_transport
@@ -379,6 +396,8 @@ class Firm:
             else:
                 qty = self._receive_shipment(link, transport_network)
             self.total_input += qty
+            if supplier.__class__.__name__ == "Country":
+                self.imports += qty
 
     # ------------------------------------------------------------------
     # Simulation loop — Phase 5: Finance
@@ -534,6 +553,9 @@ class Firm:
             "price": self.price,
             "delta_price_input": self.delta_price_input,
             "reconstruction_sales": self.reconstruction_sales,  # private capital-good sales to reconstruction (investment)
+            "imports": self.imports,
+            "input_consumed": self.input_consumed,
+            "input_stock": sum(self.inventory.values()),
         }
 
     # ------------------------------------------------------------------
@@ -630,9 +652,27 @@ class Firm:
         self.price = self.eq_price + self.delta_price_input
 
     def _evaluate_quantities_to_deliver(self, sc_network: ScNetwork, rationing_mode: str):
-        """Determine delivery quantities, applying rationing if needed."""
+        """Determine delivery quantities, applying rationing if needed.
+
+        Deliveries are computed on ``order_book`` — the orders snapshotted by
+        ``retrieve_orders`` and used to plan this step's production — NOT on
+        ``link.order``, which step 4 has already overwritten with the orders for
+        the NEXT delivery. Serving the fresh orders against a stock produced for
+        the old ones breaks goods conservation: whenever clients raise orders
+        between steps the firm ships more than it holds and the drain clip
+        silently creates the difference (0.5% of VA over the earthquake year).
+        """
         if self.total_order < EPSILON:
             self.rationing = 1.0
+            # Zero the links explicitly: link.delivery persists across steps, so
+            # returning without clearing it would re-ship LAST step's delivery
+            # against no order at all (phantom goods) whenever a firm's orders
+            # drop to zero while its previous deliveries were positive.
+            for _, client, data in sc_network.out_edges(self, data=True):
+                link: CommercialLink = data["object"]
+                link.delivery = 0.0
+                link.delivery_in_tons = 0.0
+                link.served_order = 0.0
             return
 
         available = self.product_stock
@@ -640,14 +680,18 @@ class Firm:
             self.rationing = 1.0
             for _, client, data in sc_network.out_edges(self, data=True):
                 link: CommercialLink = data["object"]
-                link.delivery = link.order
+                ordered = self.order_book.get(client.pid, 0.0)
+                link.served_order = ordered
+                link.delivery = ordered
                 link.delivery_in_tons = link.delivery * self.monetary_unit_factor / self.usd_per_ton if self.usd_per_ton > 0 else 0.0
         else:
             self.rationing = available / self.total_order
             if rationing_mode == "equal":
                 for _, client, data in sc_network.out_edges(self, data=True):
                     link: CommercialLink = data["object"]
-                    link.delivery = link.order * self.rationing
+                    ordered = self.order_book.get(client.pid, 0.0)
+                    link.served_order = ordered
+                    link.delivery = ordered * self.rationing
                     link.delivery_in_tons = link.delivery * self.monetary_unit_factor / self.usd_per_ton if self.usd_per_ton > 0 else 0.0
             elif rationing_mode == "household_first":
                 # Serve household clients first, then ration firm/country clients
@@ -658,20 +702,23 @@ class Firm:
                 hh_demand = other_demand = 0.0
                 for _, client, data in sc_network.out_edges(self, data=True):
                     link: CommercialLink = data["object"]
+                    ordered = self.order_book.get(client.pid, 0.0)
                     if client.__class__.__name__ == "Household":
-                        hh_links.append(link)
-                        hh_demand += link.order
+                        hh_links.append((link, ordered))
+                        hh_demand += ordered
                     else:
-                        other_links.append(link)
-                        other_demand += link.order
+                        other_links.append((link, ordered))
+                        other_demand += ordered
                 hh_ration = min(1.0, available / hh_demand) if hh_demand > EPSILON else 1.0
                 remainder = max(0.0, available - hh_demand * hh_ration)
                 other_ration = min(1.0, remainder / other_demand) if other_demand > EPSILON else 1.0
-                for link in hh_links:
-                    link.delivery = link.order * hh_ration
+                for link, ordered in hh_links:
+                    link.served_order = ordered
+                    link.delivery = ordered * hh_ration
                     link.delivery_in_tons = link.delivery * self.monetary_unit_factor / self.usd_per_ton if self.usd_per_ton > 0 else 0.0
-                for link in other_links:
-                    link.delivery = link.order * other_ration
+                for link, ordered in other_links:
+                    link.served_order = ordered
+                    link.delivery = ordered * other_ration
                     link.delivery_in_tons = link.delivery * self.monetary_unit_factor / self.usd_per_ton if self.usd_per_ton > 0 else 0.0
             else:
                 raise ValueError(

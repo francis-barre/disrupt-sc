@@ -88,7 +88,6 @@ class Mrio(pd.DataFrame):
         self.import_label = self._detect_label("import", axis=0)
         self.value_added_label = self._detect_label("value.?added|va", axis=0)
         self.tax_label = self._detect_label("tax", axis=0)
-        self._check_square()
         self.region_sectors = [
             t for t in self.columns
             if t[1] not in (self.final_demand_label, self.export_label, self.capital_label, self.government_label)
@@ -97,9 +96,19 @@ class Mrio(pd.DataFrame):
         self.regions = list({t[0] for t in self.region_sectors})
         self.sectors = list({t[1] for t in self.region_sectors})
         self.external_buying_countries = [t[0] for t in self.columns if t[1] == self.export_label]
-        self.external_selling_countries = [t[0] for t in self.index if t[1] == self.import_label]
+        # External sellers: regions whose rows are import-supply rows. Two
+        # formats are supported: legacy (one (BLOC, "imports") row per bloc)
+        # and sector-resolved ((BLOC, sector) rows, product dimension kept).
+        # In both, an external bloc's rows carry the bloc name at level 0 and
+        # the bloc also has an exports column — detect by region, not label.
+        _ext_set = set(self.external_buying_countries)
+        _meta = {self.value_added_label, self.tax_label} - {""}
+        self.external_selling_countries = sorted(
+            {t[0] for t in self.index if t[0] in _ext_set and t[1] not in _meta}
+        )
         self.region_households = [t for t in self.columns if t[1] == self.final_demand_label]
         self.monetary_units = monetary_units
+        self._check_square()
         self._adjust_output()
 
     # ------------------------------------------------------------------
@@ -183,13 +192,20 @@ class Mrio(pd.DataFrame):
         return self.loc[:, fd_cols]
 
     def get_intermediary(self) -> pd.DataFrame:
+        ext = set(self.external_selling_countries)
         cols = [t for t in self.columns if t[1] not in (self.final_demand_label, self.export_label, self.capital_label, self.government_label)]
-        rows = [t for t in self.index if t[1] not in (self.import_label, self.value_added_label, self.tax_label)]
+        rows = [t for t in self.index
+                if t[1] not in (self.import_label, self.value_added_label, self.tax_label)
+                and t[0] not in ext]
         return self.loc[rows, cols]
 
     def get_import_rows(self) -> pd.DataFrame:
+        """Import-supply rows: legacy (BLOC, "imports") or sector-resolved (BLOC, sector)."""
+        ext = set(self.external_selling_countries)
         cols = [t for t in self.columns if t[1] not in (self.final_demand_label, self.export_label, self.capital_label, self.government_label)]
-        rows = [t for t in self.index if t[1] == self.import_label]
+        rows = [t for t in self.index
+                if (t[1] == self.import_label or t[0] in ext)
+                and t[1] not in (self.value_added_label, self.tax_label)]
         return self.loc[rows, cols]
 
     def get_tech_coef_dict_for_selection(self, selection: "Selection") -> dict:
@@ -207,7 +223,11 @@ class Mrio(pd.DataFrame):
         dict[str, dict[str, float]]
             Keyed by buyer region_sector_name ("REG_SECTOR").
         """
-        intermediate = self.get_intermediary()
+        # Import rows are inputs too: a kept (bloc, imports) x (region, sector)
+        # cell must become a tech coefficient, or firms never buy imported
+        # intermediates and the firm->country "import" link path in
+        # supply_chain never triggers (KI-16).
+        intermediate = pd.concat([self.get_intermediary(), self.get_import_rows()])
         output = self.get_total_output()
         kept_rs_set = set(selection.region_sectors)
 
@@ -403,7 +423,7 @@ class Mrio(pd.DataFrame):
         )
         kept_ext_selling = sorted(
             c for c in ext_sell_set
-            if any(row[0] == c and row[1] == self.import_label for row in kept_rows_tuples)
+            if any(row[0] == c for row in kept_rows_tuples)
         )
 
         n_total = abs_flows.size

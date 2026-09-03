@@ -446,18 +446,23 @@ class TransportNetwork(nx.Graph):
                 _refresh_edge_capacity_costs(edge, self.cargo_types or [], capacity_constraint_mode)
 
     def reset_loads(self):
-        """Reset all load tracking and capacity costs to base values."""
-        cost_labels = self._get_cost_labels(with_capacity=False)
-        cap_labels = self._get_cost_labels(with_capacity=True)
+        """Reset all load tracking and capacity costs to base values.
+
+        Labels are derived from ``self.cargo_types`` per edge — NOT from the
+        keys of an arbitrary first edge, which may not carry every cargo type
+        (blocked types have no cost label there). Deriving from one edge left
+        the congestion-adjusted costs of the missing types un-reset on every
+        other edge, so congestion accumulated across time steps.
+        """
         for u, v in self.edges:
             edge = self[u][v]
-            for ct in (self.cargo_types or []):
-                edge[f"current_load_{ct}"] = 0
             edge["overused"] = False
             edge["shipments"] = {}
-            for i, cl in enumerate(cost_labels):
-                if cl in edge:  # blocked cargo types have no cost labels
-                    edge[cap_labels[i]] = edge[cl]
+            for ct in (self.cargo_types or []):
+                edge[f"current_load_{ct}"] = 0
+                base_label = f"cost_per_ton_{ct}"
+                if base_label in edge:  # blocked cargo types have no cost labels
+                    edge[f"cost_per_ton_with_capacity_{ct}"] = edge[base_label]
         for node_id in self.nodes:
             self._node[node_id]["shipments"] = {}
 
@@ -591,17 +596,6 @@ class TransportNetwork(nx.Graph):
             },
         }
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    def _get_cost_labels(self, with_capacity: bool) -> list[str]:
-        _, _, data = next(iter(self.edges(data=True)))
-        prefix = "cost_per_ton_with_capacity" if with_capacity else "cost_per_ton"
-        exclude = "cost_per_ton_with" if not with_capacity else None
-        return [k for k in data if k.startswith(prefix) and (exclude is None or not k.startswith(exclude) or with_capacity)]
-
-
 # ======================================================================
 # Module-level helpers
 # ======================================================================
@@ -726,7 +720,15 @@ def _calculate_cost_per_ton(edge_attr: dict, params: dict, cargo_types: list, ti
         raise ValueError(f"{edge_id}: speed is 0 or nan")
 
     time_factor = {"day": 1, "week": 7, "month": 365.25 / 12, "year": 365.25}
-    adjusted_delay_cost = params["cost_of_time"] * (time_factor[time_resolution] / 7)
+    time_scale = time_factor[time_resolution] / 7
+
+    # cost_of_time is USD per ton-hour, either a scalar or a per-cargo-type
+    # dict ({cargo_type: value, "default": value}). Per-cargo values of time
+    # are what differentiates mode choice between cargo classes: containers
+    # value time highly and shun slow modes, bulk barely values it and rides
+    # the cheap slow ones — matching the commodity-level splits observed in
+    # freight statistics (Eurostat NST breakdown).
+    cot = params["cost_of_time"]
 
     basic_cost = km * params["basic_cost"].get(edge_attr["type"], 0.01)
     transport_time = km / speed
@@ -736,7 +738,7 @@ def _calculate_cost_per_ton(edge_attr: dict, params: dict, cargo_types: list, ti
     total_fee = loading_fee + border_fee
     special_cost = params.get("name-specific", {}).get(edge_attr.get("name", ""), 0)
 
-    cost = basic_cost + special_cost + total_fee + total_time * adjusted_delay_cost
+    base = basic_cost + special_cost + total_fee
 
     for ct in cargo_types:
         # Skip blocked cargo types — no cost label means the edge is
@@ -744,6 +746,11 @@ def _calculate_cost_per_ton(edge_attr: dict, params: dict, cargo_types: list, ti
         ct_capacity = _get_cargo_capacity(edge_attr, ct)
         if ct_capacity == 0:
             continue
+        if isinstance(cot, dict):
+            ct_cot = float(cot.get(ct, cot.get("default", 0.49)))
+        else:
+            ct_cot = float(cot)
+        cost = base + total_time * ct_cot * time_scale
         edge_attr[f"cost_per_ton_{ct}"] = cost
         edge_attr[f"cost_per_ton_with_capacity_{ct}"] = cost
 
