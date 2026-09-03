@@ -276,43 +276,26 @@ def _multimodal_relevant(multimodes_str: str, transport_modes: list) -> bool:
 
 def _apply_default_capacities(tn: TransportNetwork, defaults: dict,
                               cargo_types: list, time_resolution: str):
-    """Set capacity on every edge from per-mode defaults.
+    """Fill missing edge capacities from per-mode defaults.
 
     *defaults* maps transport mode to either:
       - a number  → shared capacity (tons/day) for all cargo types
       - a dict    → per-cargo-type capacity (tons/day)
     """
     time_factor = {"day": 1, "week": 7, "month": 30, "year": 365}.get(time_resolution, 7)
-    dropped_data_caps: dict = {}
     for u, v in tn.edges:
         edge = tn[u][v]
         mode = edge["type"]
         mode_cap = defaults.get(mode)
         if mode_cap is None:
-            # No default specified → unlimited shared capacity
-            edge["capacity"] = 1e9 * time_factor
-            for ct in cargo_types:
-                if edge.pop(f"capacity_{ct}", None) is not None:  # ensure no stale per-ct caps
-                    dropped_data_caps[mode] = dropped_data_caps.get(mode, 0) + 1
+            # No default specified → preserve source data, otherwise unlimited.
+            edge.setdefault("capacity", 1e9 * time_factor)
         elif isinstance(mode_cap, dict):
-            # Per-cargo-type defaults
-            edge["capacity"] = 1e9 * time_factor  # shared fallback (unused if all ct specified)
+            edge.setdefault("capacity", 1e9 * time_factor)
             for ct in cargo_types:
-                edge[f"capacity_{ct}"] = mode_cap.get(ct, 0) * time_factor
+                edge.setdefault(f"capacity_{ct}", mode_cap.get(ct, 0) * time_factor)
         else:
-            # Shared default
-            edge["capacity"] = float(mode_cap) * time_factor
-            for ct in cargo_types:
-                edge.pop(f"capacity_{ct}", None)
-
-    for mode, n in sorted(dropped_data_caps.items()):
-        logging.warning(
-            f"default_transport_capacity has no entry for mode '{mode}': "
-            f"{n} data-supplied per-cargo capacity value(s) on its edges were "
-            f"DISCARDED and the edges treated as unlimited. Add a "
-            f"default_transport_capacity entry for '{mode}' if capacities "
-            f"should apply."
-        )
+            edge.setdefault("capacity", float(mode_cap) * time_factor)
 
     # Also pick up per-cargo-type capacity from GeoJSON columns if present
     for u, v in tn.edges:
@@ -361,4 +344,3 @@ def _apply_capacity_overrides(tn: TransportNetwork, overrides: dict,
             # Remove per-ct caps so this becomes shared
             for ct in cargo_types:
                 edge.pop(f"capacity_{ct}", None)
-
