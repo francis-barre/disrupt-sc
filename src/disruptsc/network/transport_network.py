@@ -773,8 +773,11 @@ def _refresh_edge_capacity_costs(edge: dict, cargo_types: list[str], mode: str):
 def _get_speed(edge_attr: dict, speed_dict: dict) -> float:
     if edge_attr["type"] in ("roads", "multimodal"):
         if isinstance(speed_dict.get("roads"), dict):
-            attr_key = edge_attr.get(speed_dict["roads"]["attribute"], "default")
-            return speed_dict["roads"].get(attr_key, speed_dict["roads"]["default"])
+            settings = speed_dict["roads"]
+            value = edge_attr.get(settings["attribute"])
+            if isinstance(value, (int, float)) and value > 0:
+                return float(value)
+            return settings["default"]
         return speed_dict.get("roads", 50)
     return speed_dict.get(edge_attr["type"], 50)
 

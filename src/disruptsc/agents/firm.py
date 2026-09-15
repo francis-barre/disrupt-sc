@@ -38,6 +38,7 @@ class Firm:
     long: float | None = None
     lat: float | None = None
     geometry: object = None
+    virtual: bool = False
     subregion: str | None = None
     subregions: dict = field(default_factory=dict)
     importance: float = 1.0
@@ -410,8 +411,8 @@ class Firm:
         Mirrors the routing in :meth:`deliver`: a link is received as a
         direct (no-transport) delivery when transport is globally off
         (``with_transport`` False), when the product is a non-transported
-        sector, or when the supplier is virtual; otherwise it is collected
-        from the transport network. Without the ``with_transport`` guard,
+        sector, or when the supplier or receiver is virtual; otherwise it is
+        collected from the transport network. Without the ``with_transport`` guard,
         transportable inputs delivered via ``deliver_without_transport``
         would be looked up as transport-network shipments that were never
         placed, and silently received as zero.
@@ -422,6 +423,7 @@ class Firm:
             link: CommercialLink = data["object"]
             if (not with_transport
                     or link.product_type in sectors_no_transport
+                    or getattr(self, "virtual", False)
                     or getattr(supplier, "virtual", False)):
                 qty = self._receive_service(link)
             else:

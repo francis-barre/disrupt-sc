@@ -112,6 +112,7 @@ LINK_COLUMNS = [
     "buyer_id", "buyer_type", "buyer_region", "buyer_sector",
     "order", "delivery", "realized_delivery", "delivery_in_tons",
     "product_type", "cargo_type",
+    "transport_modes",
     "eq_price", "price",
 ]
 
@@ -201,6 +202,7 @@ class AgentWriters:
             seller_sector = "imports" if seller_type == "Country" else getattr(u, "sector", "")
             buyer_sector = "" if buyer_type in ("Country", "Household") else getattr(v, "sector", "")
             cargo = link.cargo_type if link.use_transport_network else ""
+            transport_modes = "+".join(sorted(link.route.transport_modes)) if link.route else ""
 
             self.link.write_row({
                 "time_step": time_step,
@@ -217,6 +219,7 @@ class AgentWriters:
                 "delivery_in_tons": link.delivery_in_tons,
                 "product_type": link.product_type,
                 "cargo_type": cargo,
+                "transport_modes": transport_modes,
                 "eq_price": link.eq_price,
                 "price": link.price,
             })

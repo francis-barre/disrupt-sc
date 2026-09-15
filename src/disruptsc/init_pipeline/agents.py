@@ -187,6 +187,7 @@ def create_firms(firm_table: pd.DataFrame, params: AgentParams) -> dict[str, Fir
             long=row.get("long"),
             lat=row.get("lat"),
             geometry=row.get("geometry"),
+            virtual=row.get("virtual", False),
             importance=row.get("importance", 1.0),
             usd_per_ton=row.get("usd_per_ton", 2864.0),
             monetary_unit_factor=monetary_unit_factor,
@@ -850,9 +851,8 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
         (row, col) for (row, col) in selection.kept_cells
         if row[0] in country_set
     ]
-    # Per-sector density (USD/ton) averaged over regions, for the
-    # sector-resolved import format: a country's effective density is the
-    # value-weighted harmonic mean over its kept import mix (tons add up).
+    # Per-sector density (USD/ton) averaged over regions. Only sectors with a
+    # positive density contribute to a country's effective goods density.
     sector_density: dict[str, float] = {}
     for key, val in usd_per_ton.items():
         sec = key.split("_", 1)[1] if "_" in key else key
@@ -865,9 +865,10 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
         imp_sub = _rescale(mrio.loc[imp_rows, imp_cols])
         for row, col in kept_import_cells:
             val = float(imp_sub.at[row, col])
-            imports_per_country[row[0]] = imports_per_country.get(row[0], 0.0) + val
-            dens = sector_density.get(row[1], 0.0)
+            sector = col[1] if row[1] not in mrio.sectors else row[1]
+            dens = sector_density.get(sector, 0.0)
             if dens > 0:
+                imports_per_country[row[0]] = imports_per_country.get(row[0], 0.0) + val
                 country_import_tons[row[0]] = country_import_tons.get(row[0], 0.0) + val / dens
     total_imports = sum(imports_per_country.values()) or 1.0
 
@@ -1131,5 +1132,3 @@ def _handle_internal_flows(ft: gpd.GeoDataFrame,
         logging.info(f"Duplicated {len(new_rows)} single-firm region_sectors for internal flows")
 
     return ft
-
-
