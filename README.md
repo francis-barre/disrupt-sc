@@ -12,6 +12,8 @@ _DisruptSC_ simulates the economic impact of supply chain disruptions using spat
 
 > **v2.0 is a major release.** The module layout, CLI entry point, and several config keys changed. If you are upgrading from v1, read [MIGRATION.md](MIGRATION.md). The legacy v1 line is preserved on the [`legacy/v1`](https://github.com/ccolon/disrupt-sc/tree/legacy/v1) branch and tagged [`v1-last-submodule`](https://github.com/ccolon/disrupt-sc/releases/tag/v1-last-submodule).
 
+Fork-specific differences from the original `ccolon/disrupt-sc` repository are recorded in [FORK.md](FORK.md).
+
 ## Quick Start
 
 ### Install
