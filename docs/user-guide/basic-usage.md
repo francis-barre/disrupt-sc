@@ -180,9 +180,9 @@ Typical exported files include:
 - `parameters.yaml` (full config snapshot)
 - `run_fingerprint.json` (code version, git SHA, watermarked config keys)
 - `exp.log` (the run's log)
-- `firm_table.geojson`, `household_table.geojson`
+- `firm_table.fgb`, `household_table.fgb`
 - `firm_data.csv`, `household_data.csv`, `country_data.csv`, `link_data.csv`
-- `transport_edges_with_flows_*.geojson`
+- `transport_edges_with_flows_*.fgb`
 - `loss_summary.csv`, `loss_per_region_sector_time.csv`
 
 ## Practical Workflow

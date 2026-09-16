@@ -137,7 +137,7 @@ A top-level `runs.csv` index lists every subfolder with its key parameters.
 output/<scope>/criticality/
 ├── 218bbba6/                              # auto-named from fingerprint
 │   ├── criticality_results.csv
-│   ├── criticality_results.geojson        # scenario mode only
+│   ├── criticality_results.fgb            # scenario mode only
 │   └── criticality_results.fingerprint.json
 ├── 5c1a8f70/                              # different duration → different subfolder
 │   └── …

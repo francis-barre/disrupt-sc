@@ -41,7 +41,7 @@ def generate_report(output_folder: Path) -> Path:
     sections.append(_html_header(output_folder, params))
 
     # 1. Flow maps
-    flow_gdf = load_geodata(output_folder / "transport_edges_with_flows_0.geojson")
+    flow_gdf = load_geodata(output_folder / "transport_edges_with_flows_0.fgb")
     if flow_gdf is not None:
         sections.append(_section_flow_maps(flow_gdf, params))
 
@@ -57,15 +57,15 @@ def generate_report(output_folder: Path) -> Path:
     mrio_by_region = load_csv(output_folder / "mrio_by_region.csv")
     mrio_by_country = load_csv(output_folder / "mrio_by_country.csv")
     trade_data = load_csv(output_folder / "trade_data.csv")
-    country_table = load_geodata(output_folder / "country_table.geojson")
+    country_table = load_geodata(output_folder / "country_table.fgb")
     if firm_data is not None:
         sections.append(_section_mrio_comparison(
             firm_data, mrio_by_sector, mrio_by_region,
             mrio_by_country, trade_data, country_table, params))
 
     # 4. Agent summary
-    firm_table = load_geodata(output_folder / "firm_table.geojson")
-    hh_table = load_geodata(output_folder / "household_table.geojson")
+    firm_table = load_geodata(output_folder / "firm_table.fgb")
+    hh_table = load_geodata(output_folder / "household_table.fgb")
     if firm_table is not None:
         sections.append(_section_agent_summary(firm_table, hh_table, params))
 
@@ -727,5 +727,4 @@ def _section_route_transport_stats(logistics_summary: pd.DataFrame,
 # ======================================================================
 # HTML helpers
 # ======================================================================
-
 

@@ -349,13 +349,13 @@ def export_logistics_report(reports: list[dict], export_folder: Path,
 
 
 # ------------------------------------------------------------------
-# Transport flow export (per-timestep GeoJSON — unchanged)
+# Transport flow export (per-timestep FlatGeobuf)
 # ------------------------------------------------------------------
 
 def export_transport_flows(transport_flow_data: list,
                            transport_edges: gpd.GeoDataFrame,
                            export_folder: Path):
-    """Write per-timestep GeoJSON of edge flows."""
+    """Write per-timestep FlatGeobuf files of edge flows."""
     if not transport_flow_data:
         return
     flow_df = pd.DataFrame(transport_flow_data)
@@ -368,8 +368,8 @@ def export_transport_flows(transport_flow_data: list,
             how="left", on="id",
         )
         _ensure_crs(merged).to_file(
-            export_folder / f"transport_edges_with_flows_{ts}.geojson",
-            driver="GeoJSON", index=False,
+            export_folder / f"transport_edges_with_flows_{ts}.fgb",
+            driver="FlatGeobuf", index=False,
         )
 
 
@@ -545,13 +545,13 @@ def export_criticality_results(results: list[dict],
                                transport_edges: gpd.GeoDataFrame,
                                csv_path: Path,
                                geojson_path: Path):
-    """Write the compact CSV and GeoJSON outputs for scenario-based criticality."""
+    """Write the compact CSV and FlatGeobuf outputs for scenario-based criticality."""
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     geojson_path.parent.mkdir(parents=True, exist_ok=True)
 
     build_criticality_results_table(results).to_csv(csv_path, index=False)
     build_criticality_results_geodata(results, transport_edges).to_file(
-        geojson_path, driver="GeoJSON", index=False,
+        geojson_path, driver="FlatGeobuf", index=False,
     )
 
 
@@ -560,7 +560,7 @@ def export_criticality_geojson(results: list[dict],
                                geojson_path: Path):
     geojson_path.parent.mkdir(parents=True, exist_ok=True)
     build_criticality_results_geodata(results, transport_edges).to_file(
-        geojson_path, driver="GeoJSON", index=False,
+        geojson_path, driver="FlatGeobuf", index=False,
     )
 
 
@@ -659,19 +659,19 @@ def export_mrio_summary(mrio, selected, export_folder: Path):
 def export_static_tables(firm_table, household_table, transport_edges,
                          transport_nodes, export_folder: Path,
                          countries_spatial_path: Path | None = None):
-    """Export GeoJSON tables for visualization."""
+    """Export spatial tables as FlatGeobuf files for visualization."""
     if firm_table is not None and hasattr(firm_table, "to_file"):
-        _ensure_crs(firm_table).to_file(export_folder / "firm_table.geojson", driver="GeoJSON")
+        _ensure_crs(firm_table).to_file(export_folder / "firm_table.fgb", driver="FlatGeobuf")
     if household_table is not None and hasattr(household_table, "to_file"):
-        _ensure_crs(household_table).to_file(export_folder / "household_table.geojson", driver="GeoJSON")
+        _ensure_crs(household_table).to_file(export_folder / "household_table.fgb", driver="FlatGeobuf")
     if transport_edges is not None:
         cols = [c for c in transport_edges.columns if c != "node_tuple"]
         _ensure_crs(transport_edges[cols]).to_file(
-            export_folder / "transport_edges.geojson", driver="GeoJSON",
+            export_folder / "transport_edges.fgb", driver="FlatGeobuf",
         )
     if transport_nodes is not None:
         _ensure_crs(transport_nodes).to_file(
-            export_folder / "transport_nodes.geojson", driver="GeoJSON",
+            export_folder / "transport_nodes.fgb", driver="FlatGeobuf",
         )
     if countries_spatial_path and Path(countries_spatial_path).exists():
         cgdf = gpd.read_file(countries_spatial_path)
@@ -679,7 +679,7 @@ def export_static_tables(firm_table, household_table, transport_edges,
             cgdf = cgdf.rename(columns={"region": "country"})
         keep = [c for c in ["country", "geometry"] if c in cgdf.columns]
         _ensure_crs(cgdf[keep]).to_file(
-            export_folder / "country_table.geojson", driver="GeoJSON",
+            export_folder / "country_table.fgb", driver="FlatGeobuf",
         )
 
 

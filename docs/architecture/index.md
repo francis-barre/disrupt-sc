@@ -30,7 +30,7 @@ src/disruptsc/
 │   ├── disruption.py      #   disruption parsing/applying + reconstruction market
 │   ├── cache.py           #   scope-keyed, fingerprint-validated pickle caches
 │   ├── fingerprint.py     #   run provenance + per-stage cache fingerprints
-│   └── export.py          #   CSV/GeoJSON writers, loss summaries
+│   └── export.py          #   CSV/FlatGeobuf writers, loss summaries
 ├── agents/                # Firm, Household (+ Government/Investment), Country, transport_utils
 ├── network/               # Mrio, ScNetwork, TransportNetwork, CommercialLink, Route
 └── reporting/             # HTML reports (initial_state, disruption)

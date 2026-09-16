@@ -58,16 +58,16 @@ def generate_report(output_folder: Path) -> Path:
     df_firm = load_csv(output_folder / "firm_data.csv")
 
     # 1. Flow comparison maps (t=0 vs t=1)
-    gdf_t0 = load_geodata(output_folder / "transport_edges_with_flows_0.geojson")
-    gdf_t1 = load_geodata(output_folder / "transport_edges_with_flows_1.geojson")
+    gdf_t0 = load_geodata(output_folder / "transport_edges_with_flows_0.fgb")
+    gdf_t1 = load_geodata(output_folder / "transport_edges_with_flows_1.fgb")
     df_routing = load_csv(output_folder / "routing_summary.csv")
     if gdf_t0 is not None and gdf_t1 is not None:
         sections.append(_section_flow_comparison(gdf_t0, gdf_t1, params, df_routing))
     elif gdf_t0 is not None:
-        log.warning("transport_edges_with_flows_1.geojson not found — "
+        log.warning("transport_edges_with_flows_1.fgb not found — "
                     "skipping flow comparison")
     else:
-        log.warning("No flow GeoJSON files found")
+        log.warning("No flow FlatGeobuf files found")
 
     # 2. Total welfare loss by agent (per region/country)
     if df_hh is not None and df_country is not None:
