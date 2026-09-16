@@ -233,6 +233,16 @@ def run_criticality(sc_network, transport_network, firms, households, countries,
 # Set initial conditions (IO equilibrium)
 # ------------------------------------------------------------------
 
+def _solve_leontief(matrix, demand, solver):
+    if solver == "gmres":
+        solution, info = sp_linalg.gmres(
+            matrix, demand, rtol=1e-12, atol=0, restart=100, maxiter=100,
+        )
+        if info == 0 and np.isfinite(solution).all():
+            return solution
+        logging.warning("GMRES did not converge; falling back to direct solve")
+    return sp_linalg.spsolve(matrix, demand)
+
 def set_initial_conditions(sc_network, firms, households, countries,
                            tp: TransportParams, sp: SimParams):
     """Initialize agents at input-output equilibrium."""
@@ -306,7 +316,7 @@ def set_initial_conditions(sc_network, firms, households, countries,
 
     # Solve Leontief: (I - W) X = FD  →  X = (I - W)^{-1} FD
     IminusW = sp_sparse.eye(n, format="csr") - W
-    eq_production = sp_linalg.spsolve(IminusW, fd).reshape((n, 1))
+    eq_production = _solve_leontief(IminusW, fd, sp.leontief_solver).reshape((n, 1))
 
     # Guard the solve: a pathological filtered MRIO (near-singular I − W,
     # spectral radius ≥ 1) surfaces here as NaN/Inf or negative output and

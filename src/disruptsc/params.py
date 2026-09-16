@@ -63,6 +63,7 @@ class SimParams:
     epsilon_stop: float = 1e-3
     time_resolution: str = "week"
     simulation_type: str = "initial_state"
+    leontief_solver: str = "direct"
     mc_repetitions: int = 0
     propagate_input_price_change: bool = True
     adaptive_inventories: bool = False

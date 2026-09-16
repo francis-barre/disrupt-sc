@@ -15,6 +15,7 @@ filepaths:
   # "input_criticality": null
 
 with_transport: True
+leontief_solver: direct
 
 # duration of simulation
 t_final: 10  # in time_resolution unit
@@ -142,10 +143,10 @@ use_route_cache: True
 # List of transport modes to include
 transport_modes: ['roads', "maritime"]
 
-# Monetary units to use in model. 'USD', 'kUSD', 'mUSD'
+# Monetary units to use in model. 'USD', 'kUSD', 'mUSD', 'EUR', 'kEUR', 'mEUR'
 monetary_units_in_model: "mUSD"
 
-# Monetary units in input files. 'USD', 'kUSD', 'mUSD'
+# Monetary units in input files. 'USD', 'kUSD', 'mUSD', 'EUR', 'kEUR', 'mEUR'
 monetary_units_in_data: "mUSD"
 
 # Define the type of input data to calibrate the model.

@@ -828,9 +828,8 @@ def _calculate_cost_per_ton(edge_attr: dict, params: dict, cargo_types: list, ti
     if speed == 0 or (isinstance(speed, float) and np.isnan(speed)):
         raise ValueError(f"{edge_id}: speed is 0 or nan")
 
-    time_factor = {"day": 1, "week": 7, "month": 365.25 / 12, "year": 365.25}
-    time_scale = time_factor[time_resolution] / 7
-
+    # Travel and dwell times are already in hours, so cost_of_time is applied
+    # directly as a cost per tonne-hour.
     # cost_of_time is USD per ton-hour, either a scalar or a per-cargo-type
     # dict ({cargo_type: value, "default": value}). Per-cargo values of time
     # are what differentiates mode choice between cargo classes: containers
@@ -862,7 +861,7 @@ def _calculate_cost_per_ton(edge_attr: dict, params: dict, cargo_types: list, ti
         # _per_cargo): transfer costs, unlike line-haul costs, differ by
         # cargo class because of dedicated transshipment infrastructure
         cost = (fixed_base + km * _per_cargo(mode_basic_cost, ct) + _per_cargo(loading_fee, ct)
-                + (fixed_time + _per_cargo(dwell_time, ct)) * ct_cot * time_scale)
+                + (fixed_time + _per_cargo(dwell_time, ct)) * ct_cot)
         edge_attr[f"cost_per_ton_{ct}"] = cost
         edge_attr[f"cost_per_ton_with_capacity_{ct}"] = cost
 

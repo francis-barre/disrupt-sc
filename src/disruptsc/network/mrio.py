@@ -57,7 +57,8 @@ EPSILON = 1e-6
 
 # Unit conversion helpers
 _PERIODS = {"day": 365, "week": 52, "month": 12, "year": 1}
-_UNITS = {"USD": 1, "kUSD": 1e3, "mUSD": 1e6}
+_UNITS = {"USD": 1, "kUSD": 1e3, "mUSD": 1e6,
+          "EUR": 1, "kEUR": 1e3, "mEUR": 1e6}
 
 
 def rescale_monetary_values(values, input_units="USD", input_time_resolution="year",
