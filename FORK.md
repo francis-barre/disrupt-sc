@@ -80,7 +80,7 @@ sector/value density and does not override Norway's calibration.
 | --- | --- |
 | `70ebd67` | Support Norway virtual firms and calibration outputs |
 | `32baf27` | Export edge tons by cargo and flow category for Norway calibration |
-| merge (pending) | Merge upstream capacity, transit, density, and sector-import features while preserving Norway compatibility |
+| `0111d81` | Merge upstream capacity, transit, density, and sector-import features while preserving Norway compatibility |
 
 ## Maintenance rule
 
