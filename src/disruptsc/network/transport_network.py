@@ -582,6 +582,7 @@ class TransportNetwork(nx.Graph):
                 data["flow_total_tons"] += tons
                 if ct:
                     data[f"tons_{ct}"] = data.get(f"tons_{ct}", 0) + tons
+                    data[f"tons_{ct}_{fc}"] = data.get(f"tons_{ct}_{fc}", 0) + tons
                     data[f"usd_{ct}"] = data.get(f"usd_{ct}", 0) + qty
             flows.append(data)
         return flows
