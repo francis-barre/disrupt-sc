@@ -169,34 +169,48 @@ def parse_inventory_add_days(raw) -> tuple[float, list[str] | None]:
 
 def adjust_inventory_targets(targets, add_days: float = 0.0, scale: float | None = None,
                              sectors: list[str] | None = None) -> dict:
-    """Copy of a per_buying_sector inventory-target dict with the goods-stock days of the buyers in
-    *sectors* (None = every buyer, the default included) multiplied by *scale* and then shifted by
-    *add_days*. Entries at or above COPING_DAYS and the '*' override block are left untouched."""
+    """Copy of a per_buying_sector inventory-target dict with the goods-stock days of EVERY buyer (the
+    default included) multiplied by *scale*, then shifted by *add_days* for the buyers in *sectors*
+    (None = every buyer). Entries at or above COPING_DAYS and the '*' override block are left untouched.
+
+    Until 16 Sep 2026 the multiplier followed the sector list of --inventory-add-days, so a targeted
+    stock lever on a calibrated buffer (--inventory-add-days 7:H49,... --inventory-scale 2) scaled the
+    listed sectors only and left every other buyer at the uncalibrated targets (the 16 Sep
+    `2026_cal_stock7t` run: +29 % instead of a saving). The multiplier is the calibration and applies
+    to all; the sector list belongs to the lever alone."""
     import copy
     if not isinstance(targets, dict) or targets.get("definition") != "per_buying_sector":
         raise SystemExit("inventory adjustments need per_buying_sector inventory_duration_targets")
     out = copy.deepcopy(targets)
 
-    def adj(v):
+    def scaled(v):
+        v = float(v)
+        if v >= COPING_DAYS or scale is None:
+            return v
+        return v * float(scale)
+
+    def shifted(v):
         v = float(v)
         if v >= COPING_DAYS:
             return v
-        if scale is not None:
-            v = v * float(scale)
         return round(v + float(add_days), 2)
 
     values = out.setdefault("values", {})
+    for k, v in list(values.items()):
+        values[k] = scaled(v)
     if sectors is None:
         for k, v in list(values.items()):
-            values[k] = adj(v)
+            values[k] = shifted(v)
     else:
         for k in sectors:
-            values[k] = adj(values.get(k, values.get("default", 30)))
+            values[k] = shifted(values.get(k, values.get("default", 30)))
     for buyer, block in list(out.get("overrides", {}).items()):
         if buyer == "*" or not isinstance(block, dict):
             continue
+        block = {k: scaled(v) for k, v in block.items()}          # the multiplier applies to every buyer's overrides
         if sectors is None or buyer in sectors:
-            out["overrides"][buyer] = {k: adj(v) for k, v in block.items()}
+            block = {k: shifted(v) for k, v in block.items()}     # the shift to the listed buyers only
+        out["overrides"][buyer] = block
     return out
 
 
@@ -310,10 +324,11 @@ def main():
                          "pass an empty string to disable")
     ap.add_argument("--recovery-weeks", type=int, default=8, help="extra weeks after the profile ends")
     ap.add_argument("--flow-coverage", type=float, default=None)
-    ap.add_argument("--constraint-mode", choices=["off", "gradual", "binary"], default="off",
-                    help="off = no capacity routing (EU default: the heuristic does not scale; use "
-                         "--closure-threshold); gradual = congestion surcharge; binary = over-capacity "
-                         "edges are not routed (both need capacity-constrained routing)")
+    ap.add_argument("--constraint-mode", choices=["off", "on"], default="off",
+                    help="off = capacities ignored (EU default, the paper runs: closures and cost "
+                         "shocks; use --closure-threshold); on = the within-step capacity gate on the "
+                         "edges of --edge-capacities and --capacities (21 Sep 2026: replaces the "
+                         "former gradual/binary modes, archived on legacy/v2-capacity-routing)")
     ap.add_argument("--closure-threshold", type=float, default=0.75,
                     help="weeks whose capacity reduction is >= this value close the Kaub edge entirely "
                          "(2026 profile at 0.75: the four weeks of 27 Jul-23 Aug); lighter weeks become "
@@ -456,7 +471,7 @@ def main():
     config["t_final"] = t_final
     config["epsilon_stop_condition"] = 0
     config["seed"] = args.seed
-    config["capacity_constraint"] = args.constraint_mode
+    config["capacity_constraint"] = args.constraint_mode == "on"
     if args.flow_coverage is not None:
         config["flow_coverage"] = args.flow_coverage
     if args.price_threshold is not None:

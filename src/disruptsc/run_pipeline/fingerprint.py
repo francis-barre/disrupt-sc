@@ -72,8 +72,9 @@ WATERMARKED_CONFIG_KEYS = (
     "seed",
     # Full logistics block (cost coefficients, speeds, switching costs…)
     "logistics",
-    # Capacity overrides directly affect routing
-    "default_transport_capacity",
+    # Edge capacities (the gate) and cargo-mode eligibility (which cargo may use
+    # which mode: it decides which edges carry a cost label)
+    "cargo_mode_eligibility",
     "transport_capacity_overrides",
 )
 
@@ -109,12 +110,14 @@ _STAGE_ORDER = ("transport_network", "agents", "sc_network", "logistic_routes")
 _STAGE_CONFIG_KEYS = {
     "transport_network": (
         "time_resolution", "transport_modes", "use_cargo_types",
-        "logistics", "default_transport_capacity", "transport_capacity_overrides",
+        "logistics", "cargo_mode_eligibility", "transport_capacity_overrides",
+        "transport_capacity_from_edges",
     ),
     "agents": (
         "monetary_units_in_data", "monetary_units_in_model",
         "flow_coverage", "sectors_to_include", "sectors_to_exclude",
         "countries_to_include", "countries_no_transport", "country_attachment",
+        "per_sector_import_links",
         "agent_attachment", "firm_data_type",
         "explicit_service_firm", "utilization_rate",
         # NOT critical_input_threshold / input_criticality /
@@ -131,8 +134,10 @@ _STAGE_CONFIG_KEYS = {
         "weight_localization_household", "seed",
         "with_transport", "transport_to_households", "sectors_no_transport_network",
     ),
+    # NOT capacity_constraint: since 21 Sep 2026 the initial assignment is the
+    # plain Dijkstra whatever the switch (capacities act through the within-step
+    # gate), so toggling it on a build reuses the routes.
     "logistic_routes": (
-        "capacity_constraint", "capacity_routing_max_iterations",
         "price_increase_threshold", "use_route_cache",
     ),
 }
@@ -148,7 +153,7 @@ _TRANSPORT_INHERITED_SUBKEYS = {"logistics": ("sector_to_cargo_type",)}
 _STAGE_FILEPATH_KEYS = {
     "transport_network": ("transport", "multimodal"),
     "agents": ("mrio", "sector_table", "households_spatial", "firms_spatial",
-               "countries_spatial"),
+               "countries_spatial", "transit_matrix"),
     "sc_network": (),
     "logistic_routes": (),
 }
@@ -158,7 +163,14 @@ _STAGE_FILEPATH_KEYS = {
 # the same inputs (KI-34, 11 Sep 2026: the firm table and the supply-chain draws became
 # deterministic - caches written by the order-dependent code must not be reused). The transport
 # network stage is untouched by that fix and keeps version 1.
-_STAGE_BUILD_VERSION = {"transport_network": 1, "agents": 2, "sc_network": 2, "logistic_routes": 2}
+# transport_network 2 / logistic_routes 3 (KI-37, 16 Sep 2026): the edge cost lost the
+# days_per_step / 7 factor on its time term, so networks and routes cached before then carry
+# costs that depended on time_resolution (identical at weekly resolution, different elsewhere).
+# transport_network 3 / logistic_routes 4 (21 Sep 2026, capacity rework): edges no longer carry
+# a capacity on every edge nor the congestion cost labels (a cached edge dict with
+# ``capacity`` on every edge would make every edge a gate), and links no longer carry
+# multi-route plans; caches written by the retired code must not be reused.
+_STAGE_BUILD_VERSION = {"transport_network": 3, "agents": 2, "sc_network": 2, "logistic_routes": 4}
 
 
 def build_stage_fingerprint(config: dict, stage: str) -> dict:

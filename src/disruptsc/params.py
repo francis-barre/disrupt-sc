@@ -8,9 +8,13 @@ class TransportParams:
     """Parameters that govern transport and delivery behavior."""
     with_transport: bool = True
     transport_to_households: bool = True
+    # Transport capacities (transport_capacity_overrides, by edge name) are
+    # enforced by the within-step capacity gate (run_pipeline/capacity_gate.py):
+    # on-off, no cost multiplier, one rationing rule. Off = capacities ignored.
     capacity_constraint_enabled: bool = False
-    capacity_constraint_mode: str = "gradual"
-    initial_route_assignment: str = "heuristic"
+    # {mode: [cargo types]} - which cargo may use which mode (no bulk by air,
+    # only liquid bulk in pipelines); a mode not listed takes every cargo.
+    cargo_mode_eligibility: dict = field(default_factory=dict)
     rationing_mode: str = "equal"
     use_route_cache: bool = True
     switching_costs: dict = field(default_factory=lambda: {"modal_switch": 0.15, "port_switch": 0.05})
@@ -46,14 +50,6 @@ class TransportParams:
     # from sector_to_cargo_type as before.
     use_cargo_types: bool = True
     monetary_units: str = "mUSD"
-    chunk_size: float = 1e9  # tons per time-step; very large = no chunking
-    route_candidate_count: int = 4
-    route_candidate_stretch: float = 3.0
-    route_candidate_overlap: float = 0.85
-    lp_route_candidate_count: int = 20
-    lp_route_candidate_stretch: float = 4.0
-    lp_route_candidate_overlap: float = 0.9
-    lp_overcapacity_limit: float = 1.1
 
 
 @dataclass(frozen=True)
@@ -108,6 +104,11 @@ class AgentParams:
     # so national MRIO totals per partner stay exact. 0 = off (national
     # coefficients for every buyer, the legacy behavior).
     weight_localization_import: float = 0.0
+    # One import link per (buyer, country, product) via per-sector country
+    # seller sub-agents - same granularity as exports - instead of one
+    # aggregated link per (buyer, country) with dominant-type cargo and the
+    # country's average density.
+    per_sector_import_links: bool = False
     utilization_rate: float = 0.8
     # Partially-Binding Leontief: inputs below this share of a firm's intermediate
     # cost are non-critical (don't constrain output). 0.0 = strict Leontief.

@@ -36,6 +36,7 @@ from disruptsc.init_pipeline.agents import (
     create_firm_table, create_firms, load_tech_coefs, load_input_criticality,
     load_inventories, configure_household_inventories,
     create_household_table, create_households, create_countries,
+    load_transit_matrix,
     add_representative_demand_agents,
 )
 from disruptsc.init_pipeline.supply_chain import build_supply_chain_network
@@ -53,8 +54,9 @@ def build_common(config: dict, tp, sp, ap, lp, *, input_criticality=None) -> dic
         config.get("transport_modes", ["roads"]), fp, config.get("logistics", {}),
         sp.time_resolution,
         capacity_overrides=config.get("transport_capacity_overrides"),
-        default_transport_capacity=config.get("default_transport_capacity"),
+        cargo_mode_eligibility=tp.cargo_mode_eligibility,
         use_cargo_types=tp.use_cargo_types,
+        capacity_from_edges=config.get("transport_capacity_from_edges", False),
     )
     mrio = load_mrio(fp.get("mrio"), ap.monetary_units_in_data)
     sector_table = load_sector_table(fp.get("sector_table"))
@@ -83,7 +85,9 @@ def build_common(config: dict, tp, sp, ap, lp, *, input_criticality=None) -> dic
         household_table=household_table, consumption=consumption,
         cargo_map=(lp.sector_to_cargo_type if tp.use_cargo_types
                    else {"default": "any"}),
-        countries_path=fp.get("countries_spatial"), crit_df=crit_df,
+        countries_path=fp.get("countries_spatial"),
+        transit_path=fp.get("transit_matrix"),
+        crit_df=crit_df,
     )
 
 
@@ -115,14 +119,21 @@ def build_agents(common: dict, ap, sp, tp, seed=None):
         common["usd_per_ton"], sp.time_resolution, ap, common["selection"],
         transport_edges=common["te"],
         countries_no_transport=tp.countries_no_transport,
-        country_attachment=tp.country_attachment)
+        country_attachment=tp.country_attachment,
+        sector_table=common["sector_table"])
+    transit_path = common.get("transit_path")
+    if transit_path and Path(transit_path).exists():
+        load_transit_matrix(countries, transit_path, sp.time_resolution,
+                            ap.monetary_units_in_model)
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
     sc_network = build_supply_chain_network(
         firms, households, countries, common["mrio"], common["sector_table"],
         ap.nb_suppliers_per_input, ap.weight_localization_firm,
-        ap.weight_localization_household, common["cargo_map"], common["tn"])
+        ap.weight_localization_household, common["cargo_map"], common["tn"],
+        weight_localization_import=ap.weight_localization_import,
+        per_sector_import_links=ap.per_sector_import_links)
     set_initial_conditions(sc_network, firms, households, countries, tp, sp)
     return sc_network, firms, households, countries
 

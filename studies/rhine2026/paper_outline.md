@@ -73,7 +73,27 @@ data file it comes from, so the pipeline can produce it without re-deciding.
   overshoots the 2018 ex post (−0.3/−0.4 %) by ~4x on typical draws: the paper must report the ensemble and
   treat the propagation strength (pooling, stocks, tanker floor, Lower Rhine surcharge) as the calibration
   question, not one draw. Levers (seed-42 draw): fleet to 20 cm −91 %, stocks +7 d −62 %, fairway +20 cm −41 %,
-  tank barges 40 cm −41 %, package −100 %; rail at the bulk rate +13 % (not understood, not for the paper yet). The September 2026 trough (Kaub 26 cm on 9 Sep) → forecast-based
+  tank barges 40 cm −41 %, package −100 %; rail at the bulk rate +13 % (not understood, not for the paper yet). Then KI-35
+  (14–15 Sep): the alternative-route search was penalty-blind, so any Lower Rhine surcharge sent Kaub-crossing bulk to a
+  rail path that the modal-switch penalty then rejected (the rail lever's +13 % was this artefact) → penalty-aware search
+  and the line-haul modal-switch rule (50 km access allowance, 100 km line-haul threshold, road never a line-haul mode for
+  bulk), verified link by link on ten-week pairs. Batch of 15 Sep on the settled rule (the paper numbers unless the
+  calibration route changes): `2026_fc0910_base` DEU 20.7 bn = 2.16 % of a quarter (ensemble of 11 draws 1.85 ± 0.44,
+  range 1.04–2.49), peak 4.2 % of a week in mid-October; `2018_baseline` 12.8 bn = 1.34 %, peak 2.8 % in the second week
+  of December; no pooling 4.67 / 2.12 %. Levers: fleet to 20 cm −92 %, stocks +7 d −65 %, fairway +20 cm −49 %, tank
+  barges 40 cm −48 %, targeted stocks −28 %, package −100 %, rail at the bulk rate ±0 (inert by construction: no
+  delivery-time channel). Grid: Lower Rhine factor 0 = factor 1 = base (a price parameter only), stocks ×1.5 0.82 %,
+  tanker floor 40 cm 1.12 %. The overshoot against the 2018 ex post is three to four times on typical draws — the
+  calibration question of the paper. Resolved 16 Sep (Occam pass): every evidence-anchored mechanism frozen, ONE
+  calibrated parameter — the input-stock buffer, ×2 on the Bundesbank raw-material days (all inventories rather than
+  raw materials only; the October 2018 fuel-reserve release is such a buffer), picked on the 2018 ladder (×1.25 / 1.5 /
+  1.75 / 2 → 0.67 / 0.51 / 0.41 / 0.32 % of a quarter, peak in the first week of December throughout) against the
+  ex-post 0.3–0.4 %. PAPER NUMBERS (16 Sep batch, `2026_cal_*`, `2018_inv200`): 2026 DEU 5.2 bn USD = 0.54 % of a
+  quarter (ensemble 0.52 ± 0.14, range 0.31–0.76), peak 1.4 % of a week in mid-October, August wave 0.13 % (≈ EUR 1.2
+  bn, inside IfW's ex-ante 1–2 bn), September wave 0.41 %; 2018 3.1 bn = 0.32 %, peak 1.25 % in the first week of
+  December; no pooling 0.86 / 0.45 %. Levers: bulk fleet to 20 cm −95 %, fairway +20 cm −41 %, tank barges to 40 cm
+  −39 %, stocks +7 days −39 %, package −100 % (targeted stocks pending a rerun). Band: tanker floor 40 / 60 cm 0.33 /
+  0.75 %; stocks ×1 (raw materials only) 2.16 %. The September 2026 trough (Kaub 26 cm on 9 Sep) → forecast-based
   profile (BfG 6-week medians, 19 weeks to 26 Oct) and the rerun `2026_seed42_pool_fc0910` (10 Sep) as the
   2026 baseline run: DEU 8.57 bn = 0.90 % of a quarter (Q3 0.51 %, Q4 0.39 %), peak 1.38 % of a week in
   mid-October — the September trough's second wave exceeds the August one because stocks had two weeks to

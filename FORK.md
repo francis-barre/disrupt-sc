@@ -3,13 +3,14 @@
 This file records the local changes in this fork relative to the original
 `ccolon/disrupt-sc` repository. The upstream model changes are already part of
 `upstream/main`; this file documents only the additional Norway compatibility
-patch maintained here.
+patches maintained here. Features merged from upstream are intentionally not
+duplicated in this file.
 
 ## Comparison point
 
 - Upstream: `https://github.com/ccolon/disrupt-sc`
 - Fork: `https://github.com/francis-barre/disrupt-sc`
-- Upstream baseline: `6707ea2` (`upstream/main`, 2026-09-15)
+- Upstream baseline: `18e8e31` (`upstream/main`, 2026-09-21)
 
 To reproduce the comparison:
 
@@ -55,11 +56,31 @@ The previously considered spatial `sector_type` and firm-level `usd_per_ton`
 preservation branches are intentionally not included: the current Norway
 inputs already provide the needed sector table and sector-level density table.
 
+### Reading Norway edge capacities
+
+The upstream capacity redesign uses named entries in
+`transport_capacity_overrides` and ignores capacity columns carried by a
+transport GeoPackage. Norway's extracted road and rail layers already contain
+edge-specific daily capacities, so this fork adds the opt-in
+`transport_capacity_from_edges` switch. It preserves those source capacities
+and converts them from tons per day to tons per model step. The switch is
+`False` by default and is enabled only by the Norway scope; it has no effect on
+other scopes. `capacity_constraint` remains disabled for the current Norway
+run, so preserving the capacities does not impose capacity rationing until a
+Norway experiment explicitly enables it.
+
+The upstream `per_sector_import_links` and optional country `usd_per_ton`
+override are used as provided. Norway enables the former. Its country spatial
+data has no `usd_per_ton` values, so the latter falls back to the calculated
+sector/value density and does not override Norway's calibration.
+
 ## Change history
 
 | Commit | Change |
 | --- | --- |
 | `70ebd67` | Support Norway virtual firms and calibration outputs |
+| `32baf27` | Export edge tons by cargo and flow category for Norway calibration |
+| merge (pending) | Merge upstream capacity, transit, density, and sector-import features while preserving Norway compatibility |
 
 ## Maintenance rule
 

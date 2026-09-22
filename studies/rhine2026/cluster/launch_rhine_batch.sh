@@ -8,7 +8,11 @@
 # rebuild in a private cache). A postprocess job (analyze_scenario.py --no-links + figures) follows each
 # run, and one compare_runs.py job follows the whole batch.
 #
-# Usage:  bash studies/rhine2026/cluster/launch_rhine_batch.sh [--dry-run] [--jobs FILE] [--only NAME,NAME]
+# Usage:  bash studies/rhine2026/cluster/launch_rhine_batch.sh [--dry-run] [--jobs FILE] [--only NAME,NAME] [--independent]
+#
+# --independent (16 Sep 2026): submit every run at once, no afterok chain on the base. Use it when the
+# shared caches are known valid (a run-time or config change that the fingerprints ignore: switching
+# costs, inventory targets, disruptions); a job list without a *_base line behaves the same way.
 #
 # Before the first batch on a new cluster: sync_to_cluster.sh (EU data + caches), git pull to the commit
 # named in the jobs file, and check that config/user_defined_EU.yaml resolves its data through
@@ -30,11 +34,13 @@ COMMON="--profile 2026 --no-open --seed 42 --recovery-weeks 12 --light-export"
 JOBS_FILE="${SCRIPT_DIR}/studies/rhine2026/cluster/jobs_20260913.txt"
 DRY_RUN=false
 ONLY=""
+INDEPENDENT=false
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --dry-run) DRY_RUN=true; shift ;;
-        --jobs)    JOBS_FILE=$2; shift 2 ;;
-        --only)    ONLY=$2; shift 2 ;;
+        --dry-run)     DRY_RUN=true; shift ;;
+        --jobs)        JOBS_FILE=$2; shift 2 ;;
+        --only)        ONLY=$2; shift 2 ;;
+        --independent) INDEPENDENT=true; shift ;;
         *) shift ;;
     esac
 done
@@ -68,9 +74,23 @@ while IFS='|' read -r name flags; do
     [[ -z "$name" || "$name" == \#* ]] && continue
     wanted "$name" || continue
     out="${OUTPUT_DIR}/${name}"
-    payload="python studies/rhine2026/run_rhine.py ${COMMON} ${flags} --out ${out} > ${out}.log 2>&1"
+    # --full-export (21 Sep 2026) is a marker for this launcher, not a run_rhine.py flag: --light-export is a store_true
+    # switch that a later flag cannot unset, so the marker drops it from the common flags for this job and adds the
+    # link-level extraction to the postprocess (Kaub link list checked against the laptop build, then
+    # validation_outputs.py). The builder writes into the run folder: writing the tracked list in additional_data
+    # would dirty the checkout and block the next git pull.
+    # CONSTRAINT: build_kaub_links.py --expect compares with the counts of the EU seed-42 draw (5,746 links). Use
+    # --full-export for seed-42 EU runs only; for another seed or scope the extraction would refuse to run (loudly:
+    # see kaub_links_check.txt) until --expect is dropped or given that draw's counts. A refusal on a seed-42 run
+    # means the cluster's route table differs from the laptop's: a finding about the builds, not a launcher fault.
+    # Quoting of the wrapped command is exercised by cluster/check_launcher_quoting.sh (bash only, no sbatch).
+    common="$COMMON"; full=false
+    if [[ "$flags" == *--full-export* ]]; then full=true; flags="${flags//--full-export/}"; common="${COMMON//--light-export/}"; fi
+    payload="python studies/rhine2026/run_rhine.py ${common} ${flags} --out ${out} > ${out}.log 2>&1"
     dep=""
-    if [[ "$name" == *_base ]]; then
+    if $INDEPENDENT; then
+        dep=""
+    elif [[ "$name" == *_base ]]; then
         dep=""
     elif [[ "$flags" == *--cache-isolation* ]]; then
         dep=""
@@ -85,6 +105,9 @@ while IFS='|' read -r name flags; do
     post="python studies/rhine2026/analyze_scenario.py ${out} --profile ${profile} --no-links > ${out}/analysis.txt 2>&1; \
 python studies/rhine2026/plots/scenario_figures.py --profile ${profile} --run ${out} --out ${out}/figures > ${out}/figures.log 2>&1; \
 rm -f ${out}/household_data_by_sector.csv"
+    if $full; then
+        post="${post}; python studies/rhine2026/build_kaub_links.py --definition any --expect --out ${out}/kaub_links_check.csv > ${out}/kaub_links_check.txt 2>&1 && python studies/rhine2026/validation_outputs.py ${out} --flags ${out}/kaub_links_check.csv --out ${out}/validation_outputs.csv > ${out}/validation_outputs.txt 2>&1"
+    fi
     pid=$(submit "post_${name}" "$TIME_POST" "$MEM_POST" 1 "$id" "$post")
     ALL_IDS="${ALL_IDS}${ALL_IDS:+:}${pid}"
     RUN_DIRS="${RUN_DIRS} ${out}"

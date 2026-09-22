@@ -756,7 +756,8 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
                      selection: Selection,
                      transport_edges: gpd.GeoDataFrame | None = None,
                      countries_no_transport: tuple = (),
-                     country_attachment: str = "roads") -> dict[str, Country]:
+                     country_attachment: str = "roads",
+                     sector_table=None) -> dict[str, Country]:
     """Create Country objects from MRIO trade data.
 
     Only countries kept by *selection* (i.e. those that retain at least
@@ -859,6 +860,7 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
         sector_density.setdefault(sec, []).append(float(val))
     sector_density = {s: sum(v) / len(v) for s, v in sector_density.items() if v}
     country_import_tons: dict[str, float] = {}
+    imports_per_cs: dict[tuple, float] = {}
     if kept_import_cells:
         imp_rows = sorted({row for row, _ in kept_import_cells})
         imp_cols = sorted({col for _, col in kept_import_cells})
@@ -869,6 +871,7 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
             dens = sector_density.get(sector, 0.0)
             if dens > 0:
                 imports_per_country[row[0]] = imports_per_country.get(row[0], 0.0) + val
+                imports_per_cs[(row[0], sector)] = imports_per_cs.get((row[0], sector), 0.0) + val
                 country_import_tons[row[0]] = country_import_tons.get(row[0], 0.0) + val / dens
     total_imports = sum(imports_per_country.values()) or 1.0
 
@@ -885,6 +888,7 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
     # Each entry is (country_code, centroid_or_None). centroid is None when the
     # country is virtual and missing from the geojson.
     country_specs: list[tuple[str, "object | None"]] = []
+    upt_override: dict[str, float] = {}
     geojson_name = Path(countries_spatial_path).name if countries_spatial_path else "countries.geojson"
     for country_code in all_countries:
         match = countries_gdf[countries_gdf["region"] == country_code]
@@ -900,6 +904,15 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
         geom = match.iloc[0].geometry
         centroid = geom.centroid if geom.geom_type != "Point" else geom
         country_specs.append((country_code, centroid))
+        # Optional per-country import density override (USD/ton) from the
+        # geojson: use it when the observed physical trade mix (e.g. BACI
+        # value/quantity) contradicts the harmonic density of the kept
+        # value mix - value-heavy sectors can mask a physically bulk-heavy
+        # trade (Moldova: cable harnesses vs grain and fuel).
+        if "usd_per_ton" in countries_gdf.columns:
+            v = match.iloc[0].get("usd_per_ton")
+            if pd.notna(v) and float(v) > 0:
+                upt_override[country_code] = float(v)
 
     # Phase 2: batch KDTree once over countries that have a centroid.
     sited = [(code, ctr) for code, ctr in country_specs if ctr is not None]
@@ -951,6 +964,11 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
                 if key in usd_per_ton:
                     country_upt = float(usd_per_ton[key])
                     break
+        if country_code in upt_override:
+            logging.info(
+                f"Country {country_code}: usd_per_ton {country_upt:,.0f} -> "
+                f"{upt_override[country_code]:,.0f} (override from {geojson_name})")
+            country_upt = upt_override[country_code]
 
         c = Country(
             pid=country_code,
@@ -969,6 +987,49 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
             qty_purchased=qty_purchased,
         )
         countries[c.pid] = c
+
+    # Per-sector import sellers: one sub-agent per kept (country, sector)
+    # import cell, pid = the region_sector string buyers carry in input_mix
+    # ("UKRW_A01"), sharing the parent's attachment node. Import links then
+    # have the same granularity as export links: one product per link, the
+    # product's own density and cargo class. The parent country remains the
+    # buyer of scope exports and the transit anchor, and sells nothing.
+    if getattr(params, "per_sector_import_links", False):
+        sec_types = {}
+        if sector_table is not None and "type" in sector_table.columns:
+            sec_types = sector_table.set_index("sector")["type"].to_dict()
+        n_sub, n_scaled = 0, 0
+        for (country_code, sector), val in sorted(imports_per_cs.items()):
+            parent = countries.get(country_code)
+            if parent is None or parent.virtual or val <= 0:
+                continue
+            dens = float(sector_density.get(sector, 0.0))
+            # A country-level usd_per_ton override (observed aggregate density,
+            # e.g. BACI value/quantity) rescales every sector density by one
+            # factor so the country's TOTAL tonnage matches the observation
+            # while the split across products follows relative densities.
+            c_val = imports_per_country.get(country_code, 0.0)
+            c_tons = country_import_tons.get(country_code, 0.0)
+            implied = c_val / c_tons if c_tons > 0 else 0.0
+            if country_code in upt_override and implied > 0 and dens > 0:
+                dens *= upt_override[country_code] / implied
+                n_scaled += 1
+            if dens <= 0:
+                dens = parent.usd_per_ton
+            pid = f"{country_code}_{sector}"
+            countries[pid] = Country(
+                pid=pid, region=country_code, od_point=parent.od_point,
+                name=pid, long=parent.long, lat=parent.lat,
+                sector=sector, sector_type=sec_types.get(sector, "imports"),
+                region_sector=pid, usd_per_ton=dens,
+                monetary_unit_factor=parent.monetary_unit_factor,
+                transport_share=parent.transport_share,
+                supply_importance=val / total_imports if total_imports > 0 else 0.0,
+            )
+            n_sub += 1
+        logging.info(
+            f"per_sector_import_links: {n_sub} per-sector country sellers created"
+            + (f" ({n_scaled} with densities rescaled to country overrides)" if n_scaled else ""))
 
     # Log export demand summary
     total_export_demand = sum(
@@ -1132,3 +1193,66 @@ def _handle_internal_flows(ft: gpd.GeoDataFrame,
         logging.info(f"Duplicated {len(new_rows)} single-firm region_sectors for internal flows")
 
     return ft
+
+# ======================================================================
+# Transit flows
+# ======================================================================
+
+def load_transit_matrix(countries: dict, path, time_resolution: str,
+                        monetary_units_in_model: str) -> None:
+    """Populate ``Country.transit_from`` from a transit-matrix CSV.
+
+    Transit flows are exogenous background load: goods that neither
+    originate nor end in the scope but cross its network (e.g. Ukrainian
+    grain leaving through Constanta). They are off-MRIO by design - the
+    MRIO covers the scope's own trade - so the matrix is physical:
+
+        from,to,tons_per_year,cargo_type[,note]
+
+    ``from``/``to`` are country pids; both must be sited, non-virtual
+    countries or the row is skipped with a warning. The value pushed
+    through the supply chain is tons x the seller's usd_per_ton, so
+    Country.deliver (which divides by the same density) reproduces
+    tons_per_year on the network exactly; the monetary value of transit
+    is approximate and never enters scope totals (the buyer books it
+    from a Country, not a Firm). cargo_type defaults to dry_bulk.
+    """
+    df = pd.read_csv(path, comment="#")
+    required = {"from", "to", "tons_per_year"}
+    if not required.issubset(df.columns):
+        raise ValueError(f"transit matrix {path} must have columns {sorted(required)}")
+    muf = _UNITS.get(monetary_units_in_model, 1e6)
+    days = _DAYS_PER_STEP.get(time_resolution, 7)
+    total_mt, n_rows = 0.0, 0
+    for _, row in df.iterrows():
+        seller_pid, buyer_pid = str(row["from"]).strip(), str(row["to"]).strip()
+        tons_per_year = float(row["tons_per_year"])
+        if tons_per_year <= 0:
+            continue
+        problem = None
+        if seller_pid == buyer_pid:
+            problem = "identical endpoints"
+        elif seller_pid not in countries or buyer_pid not in countries:
+            problem = "country not in model (dropped by flow_coverage or absent from MRIO)"
+        elif countries[seller_pid].virtual or countries[buyer_pid].virtual:
+            problem = "virtual country (no network attachment)"
+        elif countries[seller_pid].od_point == -1 or countries[buyer_pid].od_point == -1:
+            problem = "country has no od_point"
+        if problem:
+            logging.warning(f"Transit row {seller_pid}->{buyer_pid} skipped: {problem}")
+            continue
+        seller = countries[seller_pid]
+        tons_per_step = tons_per_year * days / 365.0
+        quantity = tons_per_step * seller.usd_per_ton / muf  # model units/step
+        cargo = str(row["cargo_type"]).strip() if "cargo_type" in df.columns and pd.notna(row.get("cargo_type")) else "dry_bulk"
+        spec = countries[buyer_pid].transit_from.setdefault(
+            seller_pid, {"quantity": 0.0, "cargo_type": cargo})
+        spec["quantity"] += quantity
+        spec["cargo_type"] = cargo
+        seller.transit_to[buyer_pid] = seller.transit_to.get(buyer_pid, 0.0) + quantity
+        total_mt += tons_per_year / 1e6
+        n_rows += 1
+    logging.info(
+        f"Transit matrix {Path(path).name}: {n_rows} flows, "
+        f"{total_mt:.1f} Mt/yr riding the network as background load"
+    )

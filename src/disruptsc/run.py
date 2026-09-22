@@ -49,6 +49,7 @@ from disruptsc.init_pipeline.agents import (
     create_firm_table, create_firms, load_tech_coefs, load_input_criticality, load_input_pooling, import_bundle_shares,
     load_inventories, configure_household_inventories, report_inventory_to_gdp,
     create_household_table, create_households, create_countries,
+    load_transit_matrix,
     add_representative_demand_agents,
 )
 from disruptsc.init_pipeline.supply_chain import build_supply_chain_network
@@ -262,8 +263,9 @@ def execute(config: dict, *, cache: str | None = None,
         transport_network, transport_edges, transport_nodes = build_transport_network(
             transport_modes, filepaths, logistics_raw, sp.time_resolution,
             capacity_overrides=config.get("transport_capacity_overrides"),
-            default_transport_capacity=config.get("default_transport_capacity"),
+            cargo_mode_eligibility=tp.cargo_mode_eligibility,
             use_cargo_types=tp.use_cargo_types,
+            capacity_from_edges=config.get("transport_capacity_from_edges", False),
         )
         cache_transport_network(transport_network, transport_edges, transport_nodes,
                                 scope=scope, stage_fp=stage_fps["transport_network"])
@@ -329,7 +331,14 @@ def execute(config: dict, *, cache: str | None = None,
             transport_edges=transport_edges,
             countries_no_transport=tp.countries_no_transport,
             country_attachment=tp.country_attachment,
+            sector_table=sector_table,
         )
+
+        # Exogenous transit flows (off-MRIO background load), if configured
+        transit_path = filepaths.get("transit_matrix")
+        if transit_path and Path(transit_path).exists():
+            load_transit_matrix(countries, transit_path, sp.time_resolution,
+                                ap.monetary_units_in_model)
 
         cache_agents(firms, households, countries, mrio, sector_table, firm_table, household_table,
                      scope=scope, stage_fp=stage_fps["agents"])
@@ -374,6 +383,7 @@ def execute(config: dict, *, cache: str | None = None,
             ap.weight_localization_household,
             effective_cargo_mapping, transport_network,
             weight_localization_import=ap.weight_localization_import,
+            per_sector_import_links=ap.per_sector_import_links,
         )
         cache_sc_network(sc_network, firms, households, countries,
                          scope=scope, stage_fp=stage_fps["sc_network"])
@@ -422,9 +432,7 @@ def execute(config: dict, *, cache: str | None = None,
             logging.info("Setting up logistic routes")
             cl_table = setup_logistic_routes(
                 sc_network, transport_network, firms, countries,
-                tp,
-                max_capacity_iterations=config.get("capacity_routing_max_iterations", 3),
-                export_folder=export_folder,
+                tp, export_folder=export_folder,
             )
         else:
             cl_table = None

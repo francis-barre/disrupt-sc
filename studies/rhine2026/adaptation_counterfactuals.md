@@ -38,6 +38,60 @@ D lowers the give-up of bulk in closure weeks, E shows complementarity (package 
   × 3, tanker floor ± 10 cm, inventories ± 50 %, Lower Rhine factor 0 and 1, no pooling, v12 rates)
   belongs in the same batch: ≈ 8 more runs.
 
+## Status (16 Sep, 15:00) — paper batch on the calibrated buffer read
+
+`2026_cal_base` 0.54 % of a quarter (peak 1.42 % of a week in week 17; August wave 0.13 %, September wave 0.41 %),
+ensemble 0.52 ± 0.14 % (0.31–0.76), `2018_inv200` 0.32 % (peak week 21). Levers (DEU gross avoided): fleet20 −95 %,
+deep20 −41 %, fleet40 −39 %, stock7 −39 %, package −100 %; the fairway and the tanker floor at 40 cm remain one lever
+in the model (they remove the same tank-barge closure weeks). Targeted stocks: the cluster run was wrong (the inventory
+helper scaled the listed sectors only; fixed, KI-36); the laptop rerun gives −29 % (0.385 %), three quarters of the
+all-buyer lever. Band: tanker floor 40 /
+50 / 60 cm 0.33 / 0.54 / 0.75 %, stocks ×1 / 1.5 / 2 2.16 / 0.82 / 0.54 %, no pooling 0.86 %. Figures F4–F8 and
+`levers_20260916.csv` come from these runs. The paper numbers are these unless the event-end profile refresh
+(November) moves them; the rail lever is out, the Lower Rhine factor a price parameter, the price give-up threshold
+removed from the story.
+
+## Status (16 Sep, 10:30) — ladder read, multiplier picked
+
+2018 at ×1.25 / 1.5 / 1.75 / 2: 0.67 / 0.51 / 0.41 / 0.32 % of a quarter, peak in week 21 (3 Dec) throughout; ×1.5 with
+the tanker floor at 40 cm 0.22 %. Pick ×2 (all inventories rather than raw materials only; lower edge of the
+0.3–0.4 % target, right peak week); the 2026 August wave falls to 0.13 % of a quarter (≈ EUR 1.2 bn, inside the ex
+ante), the 2026 total to 0.54 % (12 recovery weeks). Stage 2 launched on `jobs_20260916_paper.txt` at
+`--inventory-scale 2.0`: base with 20 recovery weeks, twins, ten seeds, five levers, tanker floor 60; the 2018
+calibrated baseline is `2018_inv200`. The tanker floor stays at 50 cm with 40 / 60 as the structural band.
+
+## Status (16 Sep) — calibration route decided (Occam pass)
+
+User decision on the recommendation: freeze every mechanism that is structural or evidence-anchored (survey
+criticality with the 2 % floor, input pooling, cargo closure floors 40/50/30, voyage surcharge with cargo rates,
+the settled modal-switch rule) and calibrate ONE parameter, the input-stock buffer, on the 2018 ex post
+(0.3–0.4 % of a quarter, peak late November / early December). Why stocks: the Bundesbank targets count
+raw-material stocks at the buyer only; the supplier's finished goods, the buyer's work in progress and the
+October 2018 fuel-reserve release are buffers the model lacks, so a multiplier of 1.5–2 is the buffer the
+evidence describes, not a fit; it also reconciles the 2026 August-wave ex ante (model 0.51 % of a quarter
+against IfW EUR 1–2 bn) with the same move. Dropped from the paper set: the delivered-price give-up threshold
+(never binds), the Lower Rhine factor as a lever (price parameter only), rail at the bulk rate (inert by
+construction), floors ±10 cm (duplicate the tanker-floor axis). Stated limitations, not targets: the DIHK
+extensive margin, the missing pipeline mode, binary closures. Stage 1 `cluster/jobs_20260916_cal2018.txt`
+(2018 ladder ×1.25 / 1.5 / 1.75 / 2, ×1.5 with the tanker floor at 40 cm as a cross-check, 2026 at ×2;
+launched with `--independent`, no base chain), stage 2 `cluster/jobs_20260916_paper.txt` (base, twins,
+ensemble, five levers, tanker floor 60; multiplier to set after the pick). Then freeze the numbers, redraw
+F4–F8 with `--prefix 2026_cal_`, rewrite the ladder as evidence-anchored mechanisms + one calibrated buffer
++ structural band (tanker floor, draws).
+
+## Status (15 Sep, 21:30) — batch on the settled rule read
+
+All 28 runs of `cluster/jobs_20260911.txt` on 8d26c6c (`rhine_batch_20260915_1904.tgz`). Base 2.16 % of a quarter
+(2.74 before the fix), ensemble 1.85 ± 0.44 %, 2018 1.34 % (1.73). Levers (DEU gross avoided): fleet20 −92 %, stock7 −65 %,
+deep20 −49 %, fleet40 −48 %, stock7t −28 %, rail04 ±0 (the +13 % was the KI-35 artefact; the lever is inert now, as the
+model has no delivery-time channel through which cheaper rail could help bulk that the modal-switch penalty forbids to
+move), package −100 %. Grid: lr0 = lr1 = base (the Lower Rhine factor is a price parameter only), floors −10 cm = deep20
+= fleet40 = 1.11 %, tanker floor 60 = floors +10 = 2.70 %, stocks ×0.5 5.96 %, ×1.5 0.82 %, no pooling 4.67 %. Figures
+F4–F8 and `additional_data/levers_20260915.csv` come from these runs. Open before the paper numbers are frozen: the
+calibration overshoot (three to four times the evidence; stocks ×1.5 and the tanker floor at 40 cm each halve it), the
+event-end profile refresh (November), the rail lever's framing (inert by construction), and the missing pipeline mode
+(crude by barge through Kaub) as a stated limitation.
+
 ## Status (15 Sep, 12:00)
 
 Decision taken on the recommendation: the 50 km access allowance stays and road is never a line-haul mode for bulk
