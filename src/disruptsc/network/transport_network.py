@@ -348,7 +348,10 @@ class TransportNetwork(nx.Graph):
                 return False
             return excluded is None or (u, v) not in excluded and (v, u) not in excluded
 
-        subgraph = nx.subgraph_view(self, filter_edge=edge_ok)
+        def node_ok(node):
+            return node in (origin, destination) or not self.nodes[node].get("foreign_trade_point")
+
+        subgraph = nx.subgraph_view(self, filter_node=node_ok, filter_edge=edge_ok)
         if mode_weights:
             factors = dict(mode_weights)
 

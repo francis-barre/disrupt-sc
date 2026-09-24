@@ -74,6 +74,20 @@ override are used as provided. Norway enables the former. Its country spatial
 data has no `usd_per_ton` values, so the latter falls back to the calculated
 sector/value density and does not override Norway's calibration.
 
+### Foreign trade points are route endpoints only
+
+Country OD points may be route origins or destinations, but not intermediate
+nodes. Initial routing splits each marked point into a start and end copy in
+the batched shortest-path graph; this avoids per-route fallback searches while
+preserving normal edge costs. Disruption-time route searches apply the same
+endpoint rule. No mode penalties or Norway-specific network changes are added.
+
+The logistic-route cache build version is 6, so existing routes are rebuilt
+once while the transport-network and supply-chain caches remain reusable.
+On the Norway cache, 43,108 of 410,580 route assignments changed; none then
+used a foreign point in transit, and none became unreachable. Route setup rose
+from 93.1 to 101.3 seconds (+8.8%).
+
 ## Change history
 
 | Commit | Change |

@@ -170,7 +170,8 @@ _STAGE_FILEPATH_KEYS = {
 # a capacity on every edge nor the congestion cost labels (a cached edge dict with
 # ``capacity`` on every edge would make every edge a gate), and links no longer carry
 # multi-route plans; caches written by the retired code must not be reused.
-_STAGE_BUILD_VERSION = {"transport_network": 3, "agents": 2, "sc_network": 2, "logistic_routes": 4}
+# logistic_routes 6: route paths use endpoint-only foreign points.
+_STAGE_BUILD_VERSION = {"transport_network": 3, "agents": 2, "sc_network": 2, "logistic_routes": 6}
 
 
 def build_stage_fingerprint(config: dict, stage: str) -> dict:

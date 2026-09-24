@@ -46,7 +46,10 @@ def setup_logistic_routes(
     compared with its capacity and the binding edges are reported (the gate
     then rations them from t = 0).
     """
-    _ = (firms, countries)  # kept in the signature for the drivers (studies, run.py)
+    _ = firms  # kept in the signature for the drivers (studies, run.py)
+    for country in countries.values():
+        if country.od_point in transport_network:
+            transport_network.nodes[country.od_point]["foreign_trade_point"] = True
     # 1. Collect all routable links with their metadata
     link_specs = _collect_link_specs(sc_network, tp)
     if not link_specs:
@@ -180,57 +183,73 @@ def shortest_paths_for(subgraph, weight: str, dest_by_source: dict,
     """
     if not dest_by_source:
         return {}
+    nodes = list(subgraph.nodes)
+    idx = {n: i for i, n in enumerate(nodes)}
+    foreign = [node for node in nodes if subgraph.nodes[node].get("foreign_trade_point")]
+    foreign_start = {node: len(nodes) + i for i, node in enumerate(foreign)}
+    foreign_end = {node: len(nodes) + len(foreign) + i for i, node in enumerate(foreign)}
+    search_nodes = nodes + foreign + foreign
+
+    def start_index(node):
+        return foreign_start.get(node, idx.get(node))
+
+    def end_index(node):
+        return foreign_end.get(node, idx.get(node))
+
+    # Split each foreign point into a route origin and destination. Paths can
+    # leave the former or enter the latter, but cannot pass through either.
+    rows, cols, vals = [], [], []
+    for u, v, d in subgraph.edges(data=True):
+        if weight_fn is not None:
+            value = weight_fn(u, v, d)
+            if value is None:
+                continue
+        else:
+            value = d[weight]
+        value = max(float(value), 1e-9)  # explicit zeros are not edges for csgraph
+        rows.extend((start_index(u), start_index(v)))
+        cols.extend((end_index(v), end_index(u)))
+        vals.extend((value, value))
+
     try:
         import numpy as np
         from scipy.sparse import csr_matrix
         from scipy.sparse.csgraph import dijkstra as _sp_dijkstra
     except ImportError:  # pragma: no cover - scipy is a hard dependency elsewhere
-        if weight_fn is not None:
-            def _nx_weight(u, v, d, _f=weight_fn):
-                return _f(u, v, d)
-            search_weight = _nx_weight
-        else:
-            search_weight = weight
+        search_graph = nx.DiGraph()
+        search_graph.add_nodes_from(range(len(search_nodes)))
+        search_graph.add_weighted_edges_from(zip(rows, cols, vals))
         out = {}
         for source, dests in dest_by_source.items():
-            try:
-                paths = nx.single_source_dijkstra_path(subgraph, source, weight=search_weight)
-            except nx.NetworkXError:
-                paths = {}
+            si = start_index(source)
+            if si is None:
+                continue
+            paths = nx.single_source_dijkstra_path(search_graph, si, weight="weight")
             for dest in dests:
-                if dest in paths:
-                    out[(source, dest)] = paths[dest]
+                if dest not in idx:
+                    continue
+                if source == dest:
+                    out[(source, dest)] = [source]
+                elif end_index(dest) in paths:
+                    out[(source, dest)] = [search_nodes[i] for i in paths[end_index(dest)]]
         return out
 
-    nodes = list(subgraph.nodes)
-    idx = {n: i for i, n in enumerate(nodes)}
-    n = len(nodes)
-    rows, cols, vals = [], [], []
-    for u, v, d in subgraph.edges(data=True):
-        if weight_fn is not None:
-            w = weight_fn(u, v, d)
-            if w is None:
-                continue
-        else:
-            w = d[weight]
-        w = max(float(w), 1e-9)   # explicit zeros are not edges for csgraph
-        rows.append(idx[u]); cols.append(idx[v]); vals.append(w)
-        rows.append(idx[v]); cols.append(idx[u]); vals.append(w)
+    n = len(search_nodes)
     mat = csr_matrix((vals, (rows, cols)), shape=(n, n))
 
     out = {}
     sources = [s for s in dest_by_source if s in idx]
     for start in range(0, len(sources), chunk):
         batch = sources[start:start + chunk]
-        _, pred = _sp_dijkstra(mat, directed=False, indices=[idx[s] for s in batch],
+        _, pred = _sp_dijkstra(mat, directed=True, indices=[foreign_start.get(s, idx[s]) for s in batch],
                                return_predecessors=True)
         for row, source in enumerate(batch):
-            si = idx[source]
+            si = foreign_start.get(source, idx[source])
             for dest in dest_by_source[source]:
-                di = idx.get(dest)
+                di = foreign_end.get(dest, idx.get(dest))
                 if di is None:
                     continue
-                if di == si:
+                if source == dest:
                     out[(source, dest)] = [source]
                     continue
                 if pred[row, di] < 0:
@@ -240,7 +259,7 @@ def shortest_paths_for(subgraph, weight: str, dest_by_source: dict,
                     cur = pred[row, cur]
                     path.append(cur)
                 path.reverse()
-                out[(source, dest)] = [nodes[i] for i in path]
+                out[(source, dest)] = [search_nodes[i] for i in path]
     return out
 
 

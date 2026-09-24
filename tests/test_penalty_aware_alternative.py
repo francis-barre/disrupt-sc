@@ -156,3 +156,21 @@ def test_cached_same_mode_search_is_invalidated_with_the_others():
     tn.invalidate_alternative_routes()
     assert not tn.shortest_path_library[same_keys[0]][CT]
     assert not tn.shortest_path_library["alternative"][CT]
+
+def test_single_route_search_does_not_transit_foreign_points():
+    tn = _network()
+    tn.add_node(20, id=20, long=4, lat=0, shipments={}, disruption_duration=0,
+                type="road", foreign_trade_point=True)
+    tn.add_edge(1, 20, id=30, type="roads", km=1.0, name="foreign access", shipments={},
+                disruption_duration=0, closed=False, **{f"cost_per_ton_{CT}": 1.0})
+    tn.add_edge(20, 5, id=31, type="roads", km=1.0, name="foreign exit", shipments={},
+                disruption_duration=0, closed=False, **{f"cost_per_ton_{CT}": 1.0})
+
+    available = tn.get_undisrupted_network()
+    assert available.nodes[20]["foreign_trade_point"]
+    route = available.provide_shortest_route(1, 5, CT, "cost_per_ton")
+
+    assert route is not None
+    assert 20 not in route.transport_nodes
+    assert available.provide_shortest_route(1, 20, CT, "cost_per_ton").transport_nodes == [1, 20]
+    assert available.provide_shortest_route(20, 5, CT, "cost_per_ton").transport_nodes == [20, 5]

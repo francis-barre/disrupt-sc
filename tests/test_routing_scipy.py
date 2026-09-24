@@ -61,3 +61,39 @@ def test_zero_weight_edges_are_still_edges():
     g.add_edge(1, 2, **{W: 0.0}); g.add_edge(2, 3, **{W: 5.0}); g.add_edge(1, 3, **{W: 6.0})
     got = shortest_paths_for(g, W, {1: {3}})
     assert got[(1, 3)] == [1, 2, 3]
+
+
+def test_foreign_points_are_allowed_only_as_route_endpoints():
+    g = nx.Graph()
+    g.add_edge(1, 2, **{W: 1.0})
+    g.add_edge(2, 3, **{W: 1.0})
+    g.add_edge(1, 4, **{W: 4.0})
+    g.add_edge(4, 3, **{W: 4.0})
+    g.nodes[2]["foreign_trade_point"] = True
+
+    got = shortest_paths_for(g, W, {1: {2, 3}, 2: {3}, 3: {1}})
+    weighted = shortest_paths_for(g, W, {1: {3}}, weight_fn=lambda u, v, data: data[W])
+    blocked = shortest_paths_for(
+        g, W, {1: {3}},
+        weight_fn=lambda u, v, data: None if {u, v} == {1, 4} else data[W],
+    )
+
+    assert got[(1, 2)] == [1, 2]
+    assert got[(2, 3)] == [2, 3]
+    assert got[(1, 3)] == [1, 4, 3]
+    assert got[(3, 1)] == [3, 4, 1]
+    assert weighted[(1, 3)] == [1, 4, 3]
+    assert (1, 3) not in blocked
+
+
+def test_foreign_points_can_be_both_endpoints_but_not_transit():
+    g = nx.Graph()
+    for u, v, cost in [(10, 1, 1), (1, 2, 1), (2, 20, 1), (10, 30, 0.1), (30, 20, 0.1)]:
+        g.add_edge(u, v, **{W: cost})
+    for node in (10, 20, 30):
+        g.nodes[node]["foreign_trade_point"] = True
+
+    got = shortest_paths_for(g, W, {10: {10, 20}})
+
+    assert got[(10, 10)] == [10]
+    assert got[(10, 20)] == [10, 1, 2, 20]
