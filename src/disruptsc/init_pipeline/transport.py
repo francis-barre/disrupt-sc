@@ -207,43 +207,26 @@ def _load_transport_edges(filepath: Path, mode: str, time_resolution: str,
 
 
 def _create_nodes_and_update_edges(edges: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
-    """Extract unique nodes, using native endpoint IDs when available."""
+    """Extract unique nodes from edge endpoints, assign IDs."""
     from shapely.geometry import Point
-
-    def point(geom, position):
-        return Point(round(geom.coords[position][0], 6), round(geom.coords[position][1], 6))
-
-    def point_key(pt):
-        return pt.wkt
-
-    native_points = {}
-    for _, row in edges.iterrows():
-        for column, position in (("from_node", 0), ("to_node", -1)):
-            value = row.get(column)
-            if pd.notna(value):
-                native_points[point_key(point(row.geometry, position))] = f"native:{value}"
-
-    def endpoint(row, column, position):
-        pt = point(row.geometry, position)
-        value = row.get(column)
-        key = f"native:{value}" if pd.notna(value) else native_points.get(point_key(pt), point_key(pt))
-        return key, pt
 
     # Extract endpoints
     endpoints = []
     for idx, row in edges.iterrows():
-        start, start_point = endpoint(row, "from_node", 0)
-        end, end_point = endpoint(row, "to_node", -1)
-        endpoints.append((idx, "start", start, start_point))
-        endpoints.append((idx, "end", end, end_point))
+        geom = row.geometry
+        start = Point(round(geom.coords[0][0], 6), round(geom.coords[0][1], 6))
+        end = Point(round(geom.coords[-1][0], 6), round(geom.coords[-1][1], 6))
+        endpoints.append((idx, "start", start))
+        endpoints.append((idx, "end", end))
 
-    # Deduplicate by native ID, or by endpoint WKT for ordinary datasets.
-    key_to_id = {}
+    # Deduplicate by WKT
+    wkt_to_id = {}
     nodes = []
     next_id = 0
-    for _, _, key, pt in endpoints:
-        if key not in key_to_id:
-            key_to_id[key] = next_id
+    for _, pos, pt in endpoints:
+        wkt = pt.wkt
+        if wkt not in wkt_to_id:
+            wkt_to_id[wkt] = next_id
             nodes.append({"id": next_id, "geometry": pt})
             next_id += 1
 
@@ -253,10 +236,11 @@ def _create_nodes_and_update_edges(edges: gpd.GeoDataFrame) -> tuple[gpd.GeoData
     end1_ids = []
     end2_ids = []
     for idx, row in edges.iterrows():
-        start, _ = endpoint(row, "from_node", 0)
-        end, _ = endpoint(row, "to_node", -1)
-        end1_ids.append(key_to_id[start])
-        end2_ids.append(key_to_id[end])
+        geom = row.geometry
+        start_wkt = Point(round(geom.coords[0][0], 6), round(geom.coords[0][1], 6)).wkt
+        end_wkt = Point(round(geom.coords[-1][0], 6), round(geom.coords[-1][1], 6)).wkt
+        end1_ids.append(wkt_to_id[start_wkt])
+        end2_ids.append(wkt_to_id[end_wkt])
 
     edges["end1"] = end1_ids
     edges["end2"] = end2_ids
