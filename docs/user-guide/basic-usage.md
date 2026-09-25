@@ -179,7 +179,7 @@ Typical exported files include:
 
 - `parameters.yaml` (full config snapshot)
 - `run_fingerprint.json` (code version, git SHA, watermarked config keys)
-- `exp.log` (the run's log)
+- `exp.log` (the run log)
 - `firm_table.fgb`, `household_table.fgb`
 - `firm_data.csv`, `household_data.csv`, `country_data.csv`, `link_data.csv`
 - `transport_edges_with_flows_*.fgb`

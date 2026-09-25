@@ -874,11 +874,14 @@ def _resolve_cost_of_time(cot, cargo_type: str, edge_type: str) -> float:
     cargo's default: terminal dwell is inland handling time.
     """
     if isinstance(cot, dict):
-        value = cot.get(cargo_type, cot.get("default", 0.49))
+        mode_value = cot.get(edge_type)
+        if isinstance(mode_value, dict):
+            return float(mode_value.get(cargo_type, mode_value.get("default", cot.get("default", 0.49))))
+        value = cot.get(cargo_type, cot.get("default", mode_value if mode_value is not None else 0.49))
     else:
         value = cot
     if isinstance(value, dict):
-        value = value.get(edge_type, value.get("default", 0.49))
+        value = value.get(edge_type, value.get("default", cot.get("default", 0.49)))
     return float(value)
 
 

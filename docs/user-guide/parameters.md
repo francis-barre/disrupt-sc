@@ -26,7 +26,11 @@ t_final: 10                 # in time_resolution units
 time_resolution: "week"     # day | week | month | year
 export_files: false
 seed: null                  # integer -> reproducible supplier selection + MC draws
+leontief_solver: "direct"  # direct | gmres; GMRES falls back to direct if needed
 ```
+
+`direct` uses the existing sparse LU solve. `gmres` solves the same system
+iteratively and falls back to `direct` if it does not converge.
 
 Supported `simulation_type` values in the current v2 runtime:
 

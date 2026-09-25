@@ -73,6 +73,8 @@ You also need a scope parameter file. Only the bundled `Testkistan` scope ships 
 - **Frozen, typed parameter bundles.** `TransportParams`, `SimParams`, `AgentParams`, `LogisticsParams` dataclasses replace the v1 `Parameters` object. Config loading is a flat `dict` + dataclass build step.
 - **Unified transport graph.** Transport data is now consumed from `transport.gpkg` + `multimodal.gpkg` rather than one GeoJSON per mode.
 - **Alternative routing + edge capacities.** Rerouting under disruption, price-increase thresholds, and named edge capacities enforced by a within-step gate (proportional rationing, re-sending around saturated edges; `docs/architecture/transport-capacity.md`).
+- **FlatGeobuf spatial outputs.** Spatial tables use `.fgb`; CSV and JSON outputs are unchanged.
+- **Targeted initial routing.** Initial shortest-path searches stop after reaching destinations used by commercial links for each origin, reducing memory use while preserving shortest-path costs.
 - **Local-first config.** Only `Testkistan`'s scope YAML ships with the repo. For any other scope, drop a gitignored `config/user_defined_<scope>.local.yaml` pointing at your own data folder — the model picks it up automatically.
 - **Bundled demo data.** No submodule required to run the model out of the box.
 

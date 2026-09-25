@@ -104,7 +104,9 @@ logistics:
     waterways: 2
     airways: 2
     pipelines: 0
-  cost_of_time: 0.49 # USD per ton-hour; a trip's cost does not depend on time_resolution (KI-37)
+  # USD per ton-hour; accepts per-cargo and per-mode values.
+  # The trip time cost does not depend on time_resolution (KI-37).
+  cost_of_time: 0.49
   name-specific:
     azerty: 0
 

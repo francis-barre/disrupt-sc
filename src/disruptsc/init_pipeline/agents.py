@@ -1069,7 +1069,7 @@ def _load_region_centroids(households_spatial_path: Path | None) -> dict:
     if "region" not in gdf.columns:
         return {}
     return {
-        region: group.geometry.unary_union.centroid
+        region: group.geometry.union_all().centroid
         for region, group in gdf.groupby("region")
     }
 
@@ -1077,6 +1077,8 @@ def _load_region_centroids(households_spatial_path: Path | None) -> dict:
 def _integrate_spatial_firms(ft: gpd.GeoDataFrame, filepath: Path, mrio: Mrio) -> gpd.GeoDataFrame:
     """Replace MRIO-derived firms with spatially disaggregated data where available."""
     spatial = gpd.read_file(filepath)
+    if ft.crs is None and spatial.crs is not None:
+        ft = ft.set_crs(spatial.crs)
 
     # Handle wide-format spatial data (columns = sectors, rows = locations)
     if "region" in spatial.columns and "sector" not in spatial.columns:
@@ -1188,7 +1190,7 @@ def _handle_internal_flows(ft: gpd.GeoDataFrame,
             logging.debug(f"  {rs_name}: already has {len(rs_firms)} firms, no duplication needed")
 
     if new_rows:
-        extra = gpd.GeoDataFrame(new_rows, geometry="geometry")
+        extra = gpd.GeoDataFrame(new_rows, geometry="geometry", crs=ft.crs)
         ft = pd.concat([ft, extra], ignore_index=True)
         logging.info(f"Duplicated {len(new_rows)} single-firm region_sectors for internal flows")
 

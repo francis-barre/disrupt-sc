@@ -287,7 +287,7 @@ def _disrupted_edge_baseline_flows(gdf_t0: gpd.GeoDataFrame,
     if not edge_filters:
         return ""
 
-    # Find matching edges in t=0 GeoJSON
+    # Find matching edges in t=0 FlatGeobuf
     mask = pd.Series(False, index=gdf_t0.index)
     for attr, val in edge_filters:
         if attr in gdf_t0.columns:
