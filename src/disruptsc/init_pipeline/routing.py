@@ -419,7 +419,7 @@ def _report_unreachable(unreachable: list[dict], transport_network: TransportNet
         if len(info["agents"]) > 3:
             agents_str += f" (+{len(info['agents']) - 3} more)"
         logging.error(
-            f"  Node {node_id} ({info['lat']:.4f}, {info['lon']:.4f}): "
+            f"  Node {node_id} ({float(info['lat']):.4f}, {float(info['lon']):.4f}): "
             f"{info['as_origin']} as origin, {info['as_destination']} as dest — "
             f"agents: {agents_str}"
         )

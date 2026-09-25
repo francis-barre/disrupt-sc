@@ -46,6 +46,7 @@ _PRESETS = {
     "same_agents_new_sc_network":              (True,  True,  False, False),
     "same_sc_network_new_logistic_routes":     (True,  True,  True,  False),
     "same_logistic_routes":                    (True,  True,  True,  True),
+    "new_transport_network_same_agents":       (False, True,  True,  False),
 }
 
 
