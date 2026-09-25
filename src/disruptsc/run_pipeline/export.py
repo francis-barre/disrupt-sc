@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 import geopandas as gpd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 
 def _ensure_crs(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -68,8 +70,61 @@ class CsvWriter:
         self.close()
 
 
+class ParquetWriter:
+    """Write tabular rows in bounded Parquet row groups."""
+
+    def __init__(self, path: Path, columns: list[str], text_columns: set[str] | None = None,
+                 batch_size: int = 10_000):
+        self.path = path
+        self.columns = columns
+        self.text_columns = text_columns or set()
+        self.batch_size = batch_size
+        self.rows = []
+        self.writer = None
+        self.schema = None
+
+    def write_row(self, row: dict):
+        self.rows.append(row)
+        if len(self.rows) >= self.batch_size:
+            self._flush()
+
+    def write_rows(self, rows: list[dict]):
+        self.rows.extend(rows)
+        self._flush()
+
+    def _flush(self):
+        if not self.rows:
+            return
+        frame = pd.DataFrame(self.rows, columns=self.columns)
+        for column in self.text_columns:
+            frame[column] = frame[column].astype("string")
+        for column in set(self.columns) - self.text_columns - {"time_step"}:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce").astype(float)
+        table = pa.Table.from_pandas(frame, preserve_index=False)
+        if self.writer is None:
+            self.schema = table.schema
+            self.writer = pq.ParquetWriter(self.path, self.schema)
+        else:
+            table = table.cast(self.schema)
+        self.writer.write_table(table)
+        self.rows.clear()
+
+    def close(self):
+        self._flush()
+        if self.writer is None:
+            pd.DataFrame(columns=self.columns).to_parquet(self.path, index=False)
+        else:
+            self.writer.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
 # ------------------------------------------------------------------
-# Agent CSV writers (opened once, written to each time step)
+# Agent writers (opened once, written to each time step)
 # ------------------------------------------------------------------
 
 FIRM_COLUMNS = [
@@ -138,9 +193,17 @@ class AgentWriters:
         )
         self.country = CsvWriter(export_folder / "country_data.csv", COUNTRY_COLUMNS)
         # KI-33: the two multi-GB files are optional (export_link_data / export_inventory_data)
-        self.inventory = (CsvWriter(export_folder / "inventory_data.csv", INVENTORY_COLUMNS)
+        self.inventory = (ParquetWriter(
+            export_folder / "inventory_data.parquet", INVENTORY_COLUMNS,
+            {"firm", "input_sector"},
+        )
                           if export_inventory_data else None)
-        self.link = CsvWriter(export_folder / "link_data.csv", LINK_COLUMNS) if export_link_data else None
+        self.link = (ParquetWriter(
+            export_folder / "link_data.parquet", LINK_COLUMNS,
+            {"seller_id", "seller_region", "seller_sector", "buyer_id", "buyer_type",
+             "buyer_region", "buyer_sector", "product_type", "cargo_type", "transport_modes"},
+        )
+                     if export_link_data else None)
         self.trade = CsvWriter(export_folder / "trade_data.csv", TRADE_COLUMNS)
         self._days_per_timestep = days_per_timestep
 

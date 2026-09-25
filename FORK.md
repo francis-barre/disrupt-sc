@@ -47,10 +47,16 @@ Norway transport extraction's speed attributes to affect route costs.
 
 ### Calibration link output
 
-`link_data.csv` now includes `transport_modes`, serialized as a deterministic
+`link_data.parquet` now includes `transport_modes`, serialized as a deterministic
 `+`-separated list. The baseline link table produced by the upstream
 initial-state export can therefore be consumed by the Norway calibration
 workflow with the required route-mode information.
+
+The high-volume `link_data` and `inventory_data` exports are now written as
+batched Parquet files by default. The other small time-series exports remain
+CSV. This keeps the row-wise writer interface and bounds memory use while
+making the Norway calibration outputs substantially smaller and faster to
+write. Readers retain CSV fallback for older runs.
 
 The previously considered spatial `sector_type` and firm-level `usd_per_ton`
 preservation branches are intentionally not included: the current Norway

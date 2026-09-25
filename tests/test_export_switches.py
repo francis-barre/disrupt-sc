@@ -1,4 +1,4 @@
-"""KI-33: link_data.csv and inventory_data.csv are optional per-file exports."""
+"""KI-33: link and inventory Parquet exports are optional."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from disruptsc.run_pipeline.export import AgentWriters
 def test_default_writes_every_file(tmp_path):
     with AgentWriters(tmp_path) as w:
         assert w.link is not None and w.inventory is not None
-    assert (tmp_path / "link_data.csv").exists() and (tmp_path / "inventory_data.csv").exists()
+    assert (tmp_path / "link_data.parquet").exists() and (tmp_path / "inventory_data.parquet").exists()
 
 
 def test_switches_skip_the_bulk_files(tmp_path):
@@ -18,8 +18,8 @@ def test_switches_skip_the_bulk_files(tmp_path):
         w.write_step({}, {}, {}, 0)          # inventory branch returns early
         w.write_links(__import__("networkx").DiGraph(), 0)
     assert (tmp_path / "firm_data.csv").exists()
-    assert not (tmp_path / "link_data.csv").exists()
-    assert not (tmp_path / "inventory_data.csv").exists()
+    assert not (tmp_path / "link_data.parquet").exists()
+    assert not (tmp_path / "inventory_data.parquet").exists()
 
 
 def test_sim_params_carry_the_switches():

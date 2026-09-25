@@ -31,8 +31,12 @@ def load_params(folder: Path) -> dict:
 
 def load_csv(path: Path, **kwargs) -> pd.DataFrame | None:
     if not path.exists():
-        log.warning(f"File not found: {path.name}")
-        return None
+        path = path.with_suffix(".parquet")
+        if not path.exists():
+            log.warning(f"File not found: {path.name}")
+            return None
+    if path.suffix == ".parquet":
+        return pd.read_parquet(path, **kwargs)
     return pd.read_csv(path, **kwargs)
 
 
