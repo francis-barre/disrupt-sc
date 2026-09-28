@@ -41,6 +41,8 @@ WATERMARKED_CONFIG_KEYS = (
     "country_attachment",
     "agent_attachment",
     "countries_to_include",
+    "sparse_imports",
+    "nb_import_suppliers_per_input",
     # Transport / routing
     "use_cargo_types",
     "transport_modes",
@@ -131,8 +133,8 @@ _STAGE_CONFIG_KEYS = {
         "firm_transport_share",
     ),
     "sc_network": (
-        "nb_suppliers_per_input", "weight_localization_firm",
-        "weight_localization_household", "seed",
+        "sparse_imports", "nb_suppliers_per_input", "weight_localization_firm",
+        "nb_import_suppliers_per_input", "weight_localization_household", "seed",
         "with_transport", "transport_to_households", "sectors_no_transport_network",
     ),
     # NOT capacity_constraint: since 21 Sep 2026 the initial assignment is the

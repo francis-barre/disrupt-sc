@@ -11,6 +11,7 @@ import numpy as np
 from disruptsc.agents.firm import Firm
 from disruptsc.network.commercial_link import CommercialLink
 from disruptsc.network.sc_network import ScNetwork
+from disruptsc.init_pipeline.sparse_imports import sparsify_import_mixes
 from disruptsc.utils import progress
 
 
@@ -29,8 +30,11 @@ def build_supply_chain_network(
     weight_localization_household: float,
     sector_to_cargo_type: dict,
     transport_network=None,
+    nb_import_suppliers_per_input: float = 1.5,
     weight_localization_import: float = 0.0,
     per_sector_import_links: bool = False,
+    sparse_imports: bool = False,
+    seed: int | None = None,
 ) -> ScNetwork:
     """Build full supply-chain graph.  Returns populated ScNetwork."""
     sc = ScNetwork()
@@ -81,6 +85,23 @@ def build_supply_chain_network(
                                scale=lambda f: getattr(f, "importance", 1.0) or 1.0)
         _localize_import_mixes(households, countries, weight_localization_import,
                                value_key="sector_consumption", scale=lambda h: 1.0)
+    if sparse_imports:
+        import_sector_labels = (
+            sector_table["sector"].tolist() if sector_table is not None else ()
+        )
+        sparsify_import_mixes(
+            firms, countries, "input_mix",
+            scale=lambda firm: getattr(firm, "importance", 1.0) or 1.0,
+            target_mean_suppliers=nb_import_suppliers_per_input,
+            sector_labels=import_sector_labels,
+            seed=seed,
+        )
+        sparsify_import_mixes(
+            households, countries, "sector_consumption", scale=lambda _: 1.0,
+            target_mean_suppliers=nb_import_suppliers_per_input,
+            sector_labels=import_sector_labels,
+            seed=seed,
+        )
 
     # 1. Households select retailers (domestic B2C + import B2C)
     logging.info("Households selecting retailers")

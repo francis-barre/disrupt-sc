@@ -382,8 +382,11 @@ def execute(config: dict, *, cache: str | None = None,
             ap.nb_suppliers_per_input, ap.weight_localization_firm,
             ap.weight_localization_household,
             effective_cargo_mapping, transport_network,
+            nb_import_suppliers_per_input=ap.nb_import_suppliers_per_input,
             weight_localization_import=ap.weight_localization_import,
             per_sector_import_links=ap.per_sector_import_links,
+            sparse_imports=ap.sparse_imports,
+            seed=sp.seed,
         )
         cache_sc_network(sc_network, firms, households, countries,
                          scope=scope, stage_fp=stage_fps["sc_network"])

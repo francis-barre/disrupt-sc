@@ -343,6 +343,7 @@ rationing_mode: "equal"
 # - a decimal number between 1 and 2: firms choose either one or two suppliers per input, such that, in average
 # the average number of supplier per sector is equal to the specified number.
 nb_suppliers_per_input: 1
+nb_import_suppliers_per_input: 1.5
 
 # Determines how important it is for firms to choose suppliers close to them
 # The chance of choosing a firm as a supplier for an input, depends on its importance score and on its distance
@@ -353,6 +354,11 @@ weight_localization_firm: 1
 # The chance of choosing a firm as a supplier for an input, depends on its distance
 # It is 1 / (distance)^w where w is the weight_localization parameter
 weight_localization_household: 4
+
+# Optional sparse, sector-resolved import supplier network. False preserves the
+# legacy dense/aggregated import behavior; true uses
+# nb_import_suppliers_per_input as the target average per buyer-product.
+sparse_imports: false
 
 
 # The type of simulation to run

@@ -97,6 +97,7 @@ class AgentParams:
     # out-flows. Replaces the legacy cutoff_*/input_coverage knobs.
     flow_coverage: float = 0.95
     nb_suppliers_per_input: float = 1
+    nb_import_suppliers_per_input: float = 1.5
     weight_localization_firm: float = 1.0
     weight_localization_household: float = 4.0
     # Distance elasticity of IMPORT sourcing: buyers nearer a partner's gateway
@@ -109,6 +110,9 @@ class AgentParams:
     # aggregated link per (buyer, country) with dominant-type cargo and the
     # country's average density.
     per_sector_import_links: bool = False
+    # Reduce sector-resolved import suppliers while preserving buyer/product
+    # and country/product totals. This also enables per-sector country sellers.
+    sparse_imports: bool = False
     utilization_rate: float = 0.8
     # Partially-Binding Leontief: inputs below this share of a firm's intermediate
     # cost are non-critical (don't constrain output). 0.0 = strict Leontief.

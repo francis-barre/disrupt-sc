@@ -107,3 +107,33 @@ from 93.1 to 101.3 seconds (+8.8%).
 Update this file whenever a local fork-specific code or data contract changes.
 Do not duplicate upstream features here; update the upstream baseline above
 when the branch is rebased onto a newer upstream commit.
+
+## Optional sparse import supplier links
+
+`sparse_imports` is an opt-in supply-chain build setting. It defaults to
+`false`, leaving the existing dense/aggregated import model unchanged. When
+`true`, it sparsifies buyer links before normal supply-chain wiring. Seller
+granularity remains controlled independently by `per_sector_import_links`.
+
+The allocator starts from each buyer's existing positive import suppliers,
+after the configured import-distance localization. For each import product,
+it balances buyer requirements against partner-product totals, then uses
+seeded 2x2 transportation-cycle pivots to remove redundant links without
+changing
+those margins. Firms' requirements and supplier totals are weighted by firm
+importance; household totals are unweighted. The target average is configured
+by `nb_import_suppliers_per_input` (default `1.5`), not a hard cap: products
+with insufficient shared support can remain above it. No new partner links are
+invented, and the allocator uses a local RNG so it does not change the dense
+model's seeded supplier draws.
+
+Set `sparse_imports: true` in a scope YAML file to enable it. A configured
+`seed` makes the selection reproducible. The setting is included in run
+provenance and the supply-chain cache fingerprint; changing it
+rebuilds the supply-chain stage. The implementation
+is isolated in
+`src/disruptsc/init_pipeline/sparse_imports.py` to keep the upstream integration
+small.
+
+Validation: `tests/test_sparse_imports.py` checks default-off behavior,
+reproducibility, margin conservation, and preservation of domestic inputs.

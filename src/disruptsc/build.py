@@ -132,8 +132,10 @@ def build_agents(common: dict, ap, sp, tp, seed=None):
         firms, households, countries, common["mrio"], common["sector_table"],
         ap.nb_suppliers_per_input, ap.weight_localization_firm,
         ap.weight_localization_household, common["cargo_map"], common["tn"],
+        nb_import_suppliers_per_input=ap.nb_import_suppliers_per_input,
         weight_localization_import=ap.weight_localization_import,
-        per_sector_import_links=ap.per_sector_import_links)
+        per_sector_import_links=ap.per_sector_import_links,
+        sparse_imports=ap.sparse_imports, seed=seed)
     set_initial_conditions(sc_network, firms, households, countries, tp, sp)
     return sc_network, firms, households, countries
 
