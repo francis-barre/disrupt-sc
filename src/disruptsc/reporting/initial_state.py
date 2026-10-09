@@ -74,7 +74,12 @@ def generate_report(output_folder: Path) -> Path:
         sections.append(_section_checks(firm_data, params))
 
     # 6. SC network statistics
-    sc_edgelist = load_csv(output_folder / "sc_network_edgelist.csv", index_col=0)
+    parquet_path = output_folder / "sc_network_edgelist.parquet"
+    sc_edgelist = (
+        pd.read_parquet(parquet_path)
+        if parquet_path.exists()
+        else load_csv(output_folder / "sc_network_edgelist.csv")
+    )
     if sc_edgelist is not None:
         sections.append(_section_sc_network_stats(sc_edgelist))
 

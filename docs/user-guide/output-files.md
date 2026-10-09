@@ -18,7 +18,7 @@ output/<scope>/<timestamp>/
 │   ├── household_table.fgb
 │   └── transport_edges_with_flows_*.fgb
 ├── Network Data
-│   ├── sc_network_edgelist.csv
+│   ├── sc_network_edgelist.parquet
 │   └── io_table.csv
 ├── Analysis Results
 │   ├── loss_per_country.csv
@@ -290,17 +290,11 @@ plt.show()
 
 ## Network Data
 
-### Supply Chain Network (`sc_network_edgelist.csv`)
+### Supply Chain Network (`sc_network_edgelist.parquet`)
 
 Complete supply chain relationships.
 
-```csv
-supplier_id,buyer_id,supplier_type,buyer_type,product,weight,baseline_flow
-1001,1003,firm,firm,AGR_KHM,0.25,150000
-1002,1003,firm,firm,AGR_KHM,0.35,200000
-CHN,1003,country,firm,MAN_CHN,0.40,500000
-1003,hh_1,firm,household,MAN_KHM,0.15,75000
-```
+Read this non-spatial table with `pandas.read_parquet()`.
 
 #### Columns
 
@@ -551,7 +545,7 @@ print(f"Average impact: {high_impact['loss_rate'].mean():.1%}")
 import networkx as nx
 
 # Load supply chain network
-sc_network = pd.read_csv('sc_network_edgelist.csv')
+sc_network = pd.read_parquet('sc_network_edgelist.parquet')
 
 # Create network graph
 G = nx.from_pandas_edgelist(

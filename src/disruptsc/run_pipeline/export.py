@@ -633,7 +633,9 @@ def export_criticality_geojson(results: list[dict],
 def export_initial_state(sc_network, export_folder: Path):
     """Export IO matrix and edge list for equilibrium runs."""
     sc_network.calculate_io_matrix().to_csv(export_folder / "io_table.csv")
-    sc_network.generate_edge_list().to_csv(export_folder / "sc_network_edgelist.csv")
+    sc_network.generate_edge_list().to_parquet(
+        export_folder / "sc_network_edgelist.parquet", index=False
+    )
     logging.info(f"Exported IO table and edge list to {export_folder}")
 
 
