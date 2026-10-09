@@ -28,6 +28,8 @@ export_files: False
 # summary and the flows are needed.
 export_link_data: True
 export_inventory_data: True
+# The route cache can retain a per-commercial-link summary for analysis tools.
+build_commercial_link_table: True
 
 
 # Logistic parameters

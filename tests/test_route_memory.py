@@ -10,7 +10,9 @@ import pickle
 
 import networkx as nx
 
-from disruptsc.init_pipeline.routing import intern_routes
+from disruptsc.init_pipeline.routing import (
+    _assign_routes_from_lookup, intern_routes, setup_logistic_routes,
+)
 from disruptsc.network.commercial_link import CommercialLink
 from disruptsc.network.route import Route
 
@@ -92,3 +94,49 @@ def test_intern_routes_shares_identical_routes_between_links_and_library():
     assert library.shortest_path_library["normal"]["container"][(1, 4)] is canonical
     # a second pass is a no-op
     assert intern_routes(sc, library) == (2, 2)
+
+
+def test_assignment_reuses_route_and_cost_for_identical_cargo_paths():
+    tn = nx.Graph()
+    tn.add_edge(1, 2, id=10, type="roads", km=5.0,
+                cost_per_ton_container=1.0, cost_per_ton_dry_bulk=3.0)
+    tn.add_edge(2, 3, id=11, type="roads", km=7.0,
+                cost_per_ton_container=2.0, cost_per_ton_dry_bulk=4.0)
+
+    class Link:
+        def store_route_information(self, route, route_type, cost):
+            assert route_type == "main"
+            self.route = route
+            self.route_cost_per_ton = cost
+
+    links = [Link(), Link(), Link()]
+    specs = [
+        {"link": links[0], "origin": 1, "destination": 3, "cargo_type": "container"},
+        {"link": links[1], "origin": 1, "destination": 3, "cargo_type": "container"},
+        {"link": links[2], "origin": 1, "destination": 3, "cargo_type": "dry_bulk"},
+    ]
+    paths = {
+        ("container", 1, 3): [1, 2, 3],
+        ("dry_bulk", 1, 3): [1, 2, 3],
+    }
+
+    _assign_routes_from_lookup(specs, paths, tn)
+
+    assert links[0].route is links[1].route is links[2].route
+    assert [link.route_cost_per_ton for link in links] == [3.0, 3.0, 7.0]
+    assert [spec["route"] for spec in specs] == [link.route for link in links]
+
+
+def test_commercial_link_summary_can_be_skipped(monkeypatch):
+    import disruptsc.init_pipeline.routing as routing
+
+    monkeypatch.setattr(routing, "_collect_link_specs", lambda *_: [])
+    monkeypatch.setattr(routing, "_build_commercial_link_table", lambda *_: "summary")
+    sc = nx.DiGraph()
+    tn = nx.Graph()
+    tp = type("Params", (), {})()
+
+    assert setup_logistic_routes(sc, tn, {}, {}, tp) == "summary"
+    assert setup_logistic_routes(
+        sc, tn, {}, {}, tp, build_commercial_link_table=False,
+    ) is None

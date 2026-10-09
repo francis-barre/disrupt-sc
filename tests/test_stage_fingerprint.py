@@ -57,3 +57,19 @@ def test_seed_change_keeps_transport_and_agents():
     b = _hashes(cfg)
     assert a["transport_network"] == b["transport_network"] and a["agents"] == b["agents"]
     assert a["sc_network"] != b["sc_network"]
+
+
+def test_commercial_link_table_setting_only_invalidates_route_cache():
+    legacy_default = _hashes(BASE)
+    with_table = copy.deepcopy(BASE)
+    with_table["build_commercial_link_table"] = True
+    without_table = copy.deepcopy(BASE)
+    without_table["build_commercial_link_table"] = False
+
+    enabled, disabled = _hashes(with_table), _hashes(without_table)
+    assert legacy_default == enabled
+    assert enabled["logistic_routes"] != disabled["logistic_routes"]
+    assert all(
+        enabled[stage] == disabled[stage]
+        for stage in ("transport_network", "agents", "sc_network")
+    )

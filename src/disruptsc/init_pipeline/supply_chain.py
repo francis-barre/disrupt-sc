@@ -35,6 +35,9 @@ def build_supply_chain_network(
     per_sector_import_links: bool = False,
     sparse_imports: bool = False,
     seed: int | None = None,
+    sectors_no_transport: tuple = (
+        "utility", "transport", "trade", "services", "service", "construction",
+    ),
 ) -> ScNetwork:
     """Build full supply-chain graph.  Returns populated ScNetwork."""
     sc = ScNetwork()
@@ -72,11 +75,15 @@ def build_supply_chain_network(
         hh_import_ptype = {hh.pid: {} for hh in households.values()}
     else:
         firm_import_ptype = {
-            f.pid: _aggregate_import_inputs(f.input_mix, country_pids, sector_types)
+            f.pid: _aggregate_import_inputs(
+                f.input_mix, country_pids, sector_types, sectors_no_transport
+            )
             for f in firms.values()
         }
         hh_import_ptype = {
-            hh.pid: _aggregate_import_inputs(hh.sector_consumption, country_pids, sector_types)
+            hh.pid: _aggregate_import_inputs(
+                hh.sector_consumption, country_pids, sector_types, sectors_no_transport
+            )
             for hh in households.values()
         }
     if weight_localization_import > 0:
@@ -281,22 +288,26 @@ def _country_select_suppliers(country, sc, firms, countries, rs_to_firms,
 # Firm supplier selection
 # ------------------------------------------------------------------
 
-def _aggregate_import_inputs(needs: dict, country_pids: set, sector_types: dict) -> dict:
-    """Fold per-product import entries (sector-resolved MRIO) into one
-    "{COUNTRY}_imports" entry per partner, mutating *needs* in place.
+def _aggregate_import_inputs(needs: dict, country_pids: set, sector_types: dict,
+                             sectors_no_transport: tuple) -> dict:
+    """Aggregate physical imports by partner and keep virtual imports separate.
 
     The supply-chain graph holds one edge per (supplier, buyer) pair, so
-    per-product country links would silently overwrite each other. The
-    aggregate keeps the exact total; the buyer's product mix survives as
-    the returned {country: dominant_sector_type} used to cargo-type the
-    single link (a food firm's imports ride as dry_bulk, an automotive
-    firm's as container).
+    physical products share a partner link while each non-transport type
+    retains a separate direct-delivery link.
     """
     by_country: dict = {}
+    by_country_type: dict = {}
     for key in list(needs.keys()):
         region = key.split("_", 1)[0]
         if region in country_pids and not key.endswith("_imports"):
-            by_country.setdefault(region, []).append((key, needs.pop(key)))
+            weight = needs.pop(key)
+            sector = key.split("_", 1)[1]
+            product_type = sector_types.get(sector, "imports")
+            if product_type in sectors_no_transport:
+                by_country_type.setdefault((region, product_type), []).append(weight)
+            else:
+                by_country.setdefault(region, []).append((key, weight))
     dominant_ptype = {}
     for country, entries in by_country.items():
         agg_key = f"{country}_imports"
@@ -307,6 +318,8 @@ def _aggregate_import_inputs(needs: dict, country_pids: set, sector_types: dict)
             t = sector_types.get(sec, "imports")
             type_w[t] = type_w.get(t, 0.0) + w
         dominant_ptype[country] = max(type_w, key=type_w.get)
+    for (country, product_type), weights in by_country_type.items():
+        needs[f"{country}_nontransport_{product_type}"] = sum(weights)
     return dominant_ptype
 
 

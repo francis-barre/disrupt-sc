@@ -120,7 +120,8 @@ def build_agents(common: dict, ap, sp, tp, seed=None):
         transport_edges=common["te"],
         countries_no_transport=tp.countries_no_transport,
         country_attachment=tp.country_attachment,
-        sector_table=common["sector_table"])
+        sector_table=common["sector_table"],
+        sectors_no_transport=tp.sectors_no_transport)
     transit_path = common.get("transit_path")
     if transit_path and Path(transit_path).exists():
         load_transit_matrix(countries, transit_path, sp.time_resolution,
@@ -135,7 +136,8 @@ def build_agents(common: dict, ap, sp, tp, seed=None):
         nb_import_suppliers_per_input=ap.nb_import_suppliers_per_input,
         weight_localization_import=ap.weight_localization_import,
         per_sector_import_links=ap.per_sector_import_links,
-        sparse_imports=ap.sparse_imports, seed=seed)
+        sparse_imports=ap.sparse_imports, seed=seed,
+        sectors_no_transport=tp.sectors_no_transport)
     set_initial_conditions(sc_network, firms, households, countries, tp, sp)
     return sc_network, firms, households, countries
 

@@ -332,6 +332,7 @@ def execute(config: dict, *, cache: str | None = None,
             countries_no_transport=tp.countries_no_transport,
             country_attachment=tp.country_attachment,
             sector_table=sector_table,
+            sectors_no_transport=tp.sectors_no_transport,
         )
 
         # Exogenous transit flows (off-MRIO background load), if configured
@@ -387,6 +388,7 @@ def execute(config: dict, *, cache: str | None = None,
             per_sector_import_links=ap.per_sector_import_links,
             sparse_imports=ap.sparse_imports,
             seed=sp.seed,
+            sectors_no_transport=tp.sectors_no_transport,
         )
         cache_sc_network(sc_network, firms, households, countries,
                          scope=scope, stage_fp=stage_fps["sc_network"])
@@ -436,6 +438,7 @@ def execute(config: dict, *, cache: str | None = None,
             cl_table = setup_logistic_routes(
                 sc_network, transport_network, firms, countries,
                 tp, export_folder=export_folder,
+                build_commercial_link_table=config.get("build_commercial_link_table", True),
             )
         else:
             cl_table = None

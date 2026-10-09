@@ -38,8 +38,9 @@ def setup_logistic_routes(
     countries: dict,
     tp: TransportParams,
     export_folder: Path | None = None,
-) -> pd.DataFrame:
-    """Assign routes to every commercial link and return a summary table.
+    build_commercial_link_table: bool = True,
+) -> pd.DataFrame | None:
+    """Assign routes to every commercial link and optionally return a summary table.
 
     Uses pre-computed single-source Dijkstra for efficiency. With
     ``capacity_constraint`` on, the baseline load of every capacitated edge is
@@ -54,7 +55,7 @@ def setup_logistic_routes(
     link_specs = _collect_link_specs(sc_network, tp)
     if not link_specs:
         logging.info("No routable links found")
-        return _build_commercial_link_table(sc_network)
+        return _build_commercial_link_table(sc_network) if build_commercial_link_table else None
 
     # 2. Pre-compute routes and assign
     _precompute_and_assign(link_specs, transport_network)
@@ -64,7 +65,10 @@ def setup_logistic_routes(
         _check_baseline_capacities(link_specs, transport_network, export_folder)
 
     # 4. Build summary table
-    cl_table = _build_commercial_link_table(sc_network)
+    cl_table = (
+        _build_commercial_link_table(sc_network)
+        if build_commercial_link_table else None
+    )
 
     # 4b. Share Route objects between links with the same node sequence (KI-30)
     before, after = intern_routes(sc_network, transport_network)
@@ -361,6 +365,8 @@ def _assign_routes_from_lookup(link_specs: list[dict], path_lookup: dict,
     """Assign Route objects to links from the pre-computed path lookup."""
     assigned = 0
     unreachable = []
+    route_by_path = {}
+    cost_by_cargo_and_path = {}
     for spec in link_specs:
         key = (spec["cargo_type"], spec["origin"], spec["destination"])
         path = path_lookup.get(key)
@@ -370,9 +376,17 @@ def _assign_routes_from_lookup(link_specs: list[dict], path_lookup: dict,
             unreachable.append(spec)
             continue
 
-        route = Route(path, transport_network, spec["cargo_type"])
-        cost_label = f"cost_per_ton_{spec['cargo_type']}"
-        cost_per_ton = route.sum_indicator(transport_network, cost_label)
+        path_key = tuple(path)
+        route = route_by_path.get(path_key)
+        if route is None:
+            route = Route(path, transport_network, spec["cargo_type"])
+            route_by_path[path_key] = route
+        cost_key = (spec["cargo_type"], path_key)
+        cost_per_ton = cost_by_cargo_and_path.get(cost_key)
+        if cost_per_ton is None:
+            cost_label = f"cost_per_ton_{spec['cargo_type']}"
+            cost_per_ton = route.sum_indicator(transport_network, cost_label)
+            cost_by_cargo_and_path[cost_key] = cost_per_ton
         link.store_route_information(route, "main", cost_per_ton)
         spec["route"] = route  # store for the baseline capacity check
         assigned += 1

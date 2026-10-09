@@ -120,7 +120,7 @@ _STAGE_CONFIG_KEYS = {
         "monetary_units_in_data", "monetary_units_in_model",
         "flow_coverage", "sectors_to_include", "sectors_to_exclude",
         "countries_to_include", "countries_no_transport", "country_attachment",
-        "per_sector_import_links",
+        "per_sector_import_links", "sectors_no_transport_network",
         "agent_attachment", "firm_data_type",
         "explicit_service_firm", "utilization_rate",
         # NOT critical_input_threshold / input_criticality /
@@ -174,7 +174,10 @@ _STAGE_FILEPATH_KEYS = {
 # ``capacity`` on every edge would make every edge a gate), and links no longer carry
 # multi-route plans; caches written by the retired code must not be reused.
 # logistic_routes 6: route paths use endpoint-only foreign points.
-_STAGE_BUILD_VERSION = {"transport_network": 3, "agents": 2, "sc_network": 2, "logistic_routes": 6}
+# agents/sc_network 3: no-transport imports remain as zero-density suppliers;
+# aggregated imports keep them separate from physical goods.
+# logistic_routes 7: its cache also stores the agent and supply-chain graphs.
+_STAGE_BUILD_VERSION = {"transport_network": 3, "agents": 3, "sc_network": 3, "logistic_routes": 7}
 
 
 def build_stage_fingerprint(config: dict, stage: str) -> dict:
@@ -201,6 +204,8 @@ def build_stage_fingerprint(config: dict, stage: str) -> dict:
         else:
             cfg_keys += list(_STAGE_CONFIG_KEYS[s])
         fp_keys += list(_STAGE_FILEPATH_KEYS[s])
+    if stage == "logistic_routes" and config.get("build_commercial_link_table", True) is False:
+        cfg_keys.append("build_commercial_link_table")
     filepaths = config.get("filepaths") or {}
     cfg = {k: _without_subkeys(k, config.get(k)) for k in cfg_keys}
     payload = {

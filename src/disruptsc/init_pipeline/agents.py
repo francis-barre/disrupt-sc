@@ -757,7 +757,10 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
                      transport_edges: gpd.GeoDataFrame | None = None,
                      countries_no_transport: tuple = (),
                      country_attachment: str = "roads",
-                     sector_table=None) -> dict[str, Country]:
+                     sector_table=None,
+                     sectors_no_transport: tuple = (
+                         "utility", "transport", "trade", "services", "service", "construction",
+                     )) -> dict[str, Country]:
     """Create Country objects from MRIO trade data.
 
     Only countries kept by *selection* (i.e. those that retain at least
@@ -852,14 +855,19 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
         (row, col) for (row, col) in selection.kept_cells
         if row[0] in country_set
     ]
-    # Per-sector density (USD/ton) averaged over regions. Only sectors with a
-    # positive density contribute to a country's effective goods density.
+    sector_types = (
+        sector_table.set_index("sector")["type"].to_dict()
+        if sector_table is not None else {}
+    )
+    # Per-sector density (USD/ton), averaged over positive regional values.
     sector_density: dict[str, float] = {}
     for key, val in usd_per_ton.items():
         sec = key.split("_", 1)[1] if "_" in key else key
-        sector_density.setdefault(sec, []).append(float(val))
+        if float(val) > 0:
+            sector_density.setdefault(sec, []).append(float(val))
     sector_density = {s: sum(v) / len(v) for s, v in sector_density.items() if v}
     country_import_tons: dict[str, float] = {}
+    physical_import_value: dict[str, float] = {}
     imports_per_cs: dict[tuple, float] = {}
     if kept_import_cells:
         imp_rows = sorted({row for row, _ in kept_import_cells})
@@ -869,9 +877,19 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
             val = float(imp_sub.at[row, col])
             sector = col[1] if row[1] not in mrio.sectors else row[1]
             dens = sector_density.get(sector, 0.0)
-            if dens > 0:
-                imports_per_country[row[0]] = imports_per_country.get(row[0], 0.0) + val
-                imports_per_cs[(row[0], sector)] = imports_per_cs.get((row[0], sector), 0.0) + val
+            if sector_table is not None and sector not in sector_types:
+                raise ValueError(f"Imported product {sector!r} has no sector type")
+            sector_type = sector_types[sector] if sector_table is not None else "imports"
+            if (sector_table is not None
+                    and sector_type not in sectors_no_transport and dens <= 0):
+                raise ValueError(
+                    f"Physical import product {sector!r} from {row[0]!r} "
+                    "has no positive usd_per_ton density"
+                )
+            imports_per_country[row[0]] = imports_per_country.get(row[0], 0.0) + val
+            imports_per_cs[(row[0], sector)] = imports_per_cs.get((row[0], sector), 0.0) + val
+            if sector_type not in sectors_no_transport and dens > 0:
+                physical_import_value[row[0]] = physical_import_value.get(row[0], 0.0) + val
                 country_import_tons[row[0]] = country_import_tons.get(row[0], 0.0) + val / dens
     total_imports = sum(imports_per_country.values()) or 1.0
 
@@ -953,7 +971,7 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
         # Sector-resolved import format: value-weighted harmonic density of
         # the country's kept import mix (correct for total tonnage). Legacy
         # fallback: exact-match resolution against the usd_per_ton dict.
-        c_val = imports_per_country.get(country_code, 0.0)
+        c_val = physical_import_value.get(country_code, 0.0)
         c_tons = country_import_tons.get(country_code, 0.0)
         if c_tons > 0 and c_val > 0:
             country_upt = c_val / c_tons
@@ -995,32 +1013,33 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
     # product's own density and cargo class. The parent country remains the
     # buyer of scope exports and the transit anchor, and sells nothing.
     if getattr(params, "per_sector_import_links", False):
-        sec_types = {}
-        if sector_table is not None and "type" in sector_table.columns:
-            sec_types = sector_table.set_index("sector")["type"].to_dict()
         n_sub, n_scaled = 0, 0
         for (country_code, sector), val in sorted(imports_per_cs.items()):
             parent = countries.get(country_code)
             if parent is None or parent.virtual or val <= 0:
                 continue
-            dens = float(sector_density.get(sector, 0.0))
+            sector_type = sector_types[sector] if sector_table is not None else "imports"
+            dens = (
+                0.0 if sector_type in sectors_no_transport
+                else float(sector_density.get(sector, 0.0))
+            )
             # A country-level usd_per_ton override (observed aggregate density,
             # e.g. BACI value/quantity) rescales every sector density by one
             # factor so the country's TOTAL tonnage matches the observation
             # while the split across products follows relative densities.
-            c_val = imports_per_country.get(country_code, 0.0)
+            c_val = physical_import_value.get(country_code, 0.0)
             c_tons = country_import_tons.get(country_code, 0.0)
             implied = c_val / c_tons if c_tons > 0 else 0.0
             if country_code in upt_override and implied > 0 and dens > 0:
                 dens *= upt_override[country_code] / implied
                 n_scaled += 1
-            if dens <= 0:
+            if dens <= 0 and sector_type not in sectors_no_transport:
                 dens = parent.usd_per_ton
             pid = f"{country_code}_{sector}"
             countries[pid] = Country(
                 pid=pid, region=country_code, od_point=parent.od_point,
                 name=pid, long=parent.long, lat=parent.lat,
-                sector=sector, sector_type=sec_types.get(sector, "imports"),
+                sector=sector, sector_type=sector_type,
                 region_sector=pid, usd_per_ton=dens,
                 monetary_unit_factor=parent.monetary_unit_factor,
                 transport_share=parent.transport_share,
@@ -1030,6 +1049,29 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
         logging.info(
             f"per_sector_import_links: {n_sub} per-sector country sellers created"
             + (f" ({n_scaled} with densities rescaled to country overrides)" if n_scaled else ""))
+    elif sector_table is not None:
+        # Keep non-transport imports separate from the partner's physical-goods
+        # bundle so a dominant goods type cannot send service value as freight.
+        imports_by_type: dict[tuple[str, str], float] = {}
+        for (country_code, sector), val in imports_per_cs.items():
+            sector_type = sector_types[sector]
+            if sector_type in sectors_no_transport:
+                key = (country_code, sector_type)
+                imports_by_type[key] = imports_by_type.get(key, 0.0) + val
+        for (country_code, sector_type), val in sorted(imports_by_type.items()):
+            parent = countries.get(country_code)
+            if parent is None or parent.virtual or val <= 0:
+                continue
+            pid = f"{country_code}_nontransport_{sector_type}"
+            countries[pid] = Country(
+                pid=pid, region=country_code, od_point=parent.od_point,
+                name=pid, long=parent.long, lat=parent.lat,
+                sector=sector_type, sector_type=sector_type, region_sector=pid,
+                usd_per_ton=0.0,
+                monetary_unit_factor=parent.monetary_unit_factor,
+                transport_share=parent.transport_share,
+                supply_importance=val / total_imports if total_imports > 0 else 0.0,
+            )
 
     # Log export demand summary
     total_export_demand = sum(
