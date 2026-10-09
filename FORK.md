@@ -30,13 +30,18 @@ receiving products, just as a virtual supplier already did. This is required
 for Norway's offshore virtual oil-and-gas firm, whose flows are configured to
 bypass the transport network.
 
-### Sector-resolved country import density
+### Import suppliers without physical transport
 
-When import rows are sector-resolved, country import density uses the selling
-sector from the MRIO column. Import value and tonnage are included only when a
-positive USD-per-ton density exists. This prevents service or otherwise
-non-tonnage rows from distorting the effective goods density used for country
-imports.
+Country-sector import suppliers are retained from positive MRIO values even
+when a product has no physical density. Types listed in
+`sectors_no_transport_network` receive zero density and are delivered directly;
+only physical products contribute to country goods density and tonnage. A
+physical import without a positive density raises an error.
+
+When `per_sector_import_links` is disabled, physical imports remain aggregated
+by partner while non-transport imports are grouped by partner and product type.
+This prevents service value from being assigned the dominant goods type and
+routed as freight.
 
 ### Edge-specific road speeds
 
@@ -57,6 +62,10 @@ batched Parquet files by default. The other small time-series exports remain
 CSV. This keeps the row-wise writer interface and bounds memory use while
 making the Norway calibration outputs substantially smaller and faster to
 write. Readers retain CSV fallback for older runs.
+
+The initial-state supply-chain edge list is written as Parquet
+(`sc_network_edgelist.parquet`) instead of CSV; the initial-state report reads
+that format directly.
 
 The previously considered spatial `sector_type` and firm-level `usd_per_ton`
 preservation branches are intentionally not included: the current Norway
@@ -93,6 +102,23 @@ once while the transport-network and supply-chain caches remain reusable.
 On the Norway cache, 43,108 of 410,580 route assignments changed; none then
 used a foreign point in transit, and none became unreachable. Route setup rose
 from 93.1 to 101.3 seconds (+8.8%).
+
+### Reuse routes during assignment
+
+Initial route assignment now reuses one `Route` object per identical node
+sequence and memoizes its cost sum per cargo type and path. This moves route
+sharing earlier than the existing post-assignment `intern_routes` pass,
+avoiding repeated route construction and repeated edge-cost scans for links
+that share a path. Dijkstra choices, per-link costs, and shipment identities
+are unchanged; shipments remain individual for the capacity gate.
+
+### Optional commercial-link summary cache
+
+`build_commercial_link_table` defaults to `true` for compatibility. Set it to
+`false` to skip constructing the per-link route summary and store `null` in
+the logistic-route cache; this does not change route assignment or simulation.
+The setting fingerprints only the logistic-route cache. Norway disables it
+for full runs and calibration because those workflows do not use the table.
 
 ## Change history
 
