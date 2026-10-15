@@ -51,6 +51,7 @@ class ScNetwork(nx.DiGraph):
             "source_id", "source_str_id", "source_type", "source_od_point",
             "target_id", "target_str_id", "target_type", "target_od_point",
         ])
+        df[["source_id", "target_id"]] = df[["source_id", "target_id"]].astype(str)
         return df
 
     def identify_firms_without_clients(self) -> list:

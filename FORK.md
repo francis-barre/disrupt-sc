@@ -66,6 +66,9 @@ write. Readers retain CSV fallback for older runs.
 The initial-state supply-chain edge list is written as Parquet
 (`sc_network_edgelist.parquet`) instead of CSV; the initial-state report reads
 that format directly.
+Its source and target ID columns are strings because firm IDs are numeric while
+sector-specific foreign-import agent IDs are strings; normalizing only the
+exported IDs avoids mixed-type Parquet columns without changing graph IDs.
 
 The previously considered spatial `sector_type` and firm-level `usd_per_ton`
 preservation branches are intentionally not included: the current Norway
