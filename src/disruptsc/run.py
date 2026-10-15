@@ -417,6 +417,7 @@ def execute(config: dict, *, cache: str | None = None,
     # ------------------------------------------------------------------
     # Stage 4: Logistic routes
     # ------------------------------------------------------------------
+    write_routes_cache = config["write_logistic_routes_cache"]
     if routes_from_cache:
         logging.info("Loading logistic routes from cache")
         sc_network, transport_network, cl_table, firms, households, countries = load_cached_logistic_routes(
@@ -427,7 +428,7 @@ def execute(config: dict, *, cache: str | None = None,
         # Caches written before route sharing (KI-30) hold one Route per link;
         # share them now and re-save once so the next load is small.
         before, after = intern_routes(sc_network, transport_network)
-        if before > after * 1.05 and before - after > 1000:
+        if write_routes_cache and before > after * 1.05 and before - after > 1000:
             logging.info(f"Route objects shared across links: {before:,} -> {after:,}; "
                          f"re-saving the routes cache")
             cache_logistic_routes(sc_network, transport_network, cl_table, firms, households, countries,
@@ -442,8 +443,9 @@ def execute(config: dict, *, cache: str | None = None,
             )
         else:
             cl_table = None
-        cache_logistic_routes(sc_network, transport_network, cl_table, firms, households, countries,
-                              scope=scope, stage_fp=stage_fps["logistic_routes"])
+        if write_routes_cache:
+            cache_logistic_routes(sc_network, transport_network, cl_table, firms, households, countries,
+                                  scope=scope, stage_fp=stage_fps["logistic_routes"])
     # The commercial-link table only feeds the cache; on the EU scope it is a
     # 0.65 GB DataFrame that the simulation never reads.
     del cl_table

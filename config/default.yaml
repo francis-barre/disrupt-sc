@@ -30,6 +30,9 @@ export_link_data: True
 export_inventory_data: True
 # The route cache can retain a per-commercial-link summary for analysis tools.
 build_commercial_link_table: True
+# Writing the full logistic-routes snapshot is expensive; enable only when
+# repeated runs will reuse the same routes. Existing route caches can still load.
+write_logistic_routes_cache: False
 
 
 # Logistic parameters
