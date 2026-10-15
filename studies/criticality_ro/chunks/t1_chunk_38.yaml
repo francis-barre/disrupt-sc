@@ -1,0 +1,8 @@
+simulation_type: criticality
+export_files: False
+t_final: 3
+criticality:
+  duration: 1
+  run_id: t1_chunk_38
+  attribute: id
+  edges: [6712, 25, 576, 3673, 114, 1528, 26, 54, 549, 362, 846, 389, 218, 1368, 73, 3863, 19, 872, 1307, 282, 474, 626, 982, 542, 275, 417, 1283, 3749, 1509, 783, 1569, 1633, 979, 298, 1961, 1864, 3782, 1616, 1077, 207, 805]

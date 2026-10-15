@@ -166,7 +166,7 @@ LINK_COLUMNS = [
     "time_step", "seller_id", "seller_region", "seller_sector",
     "buyer_id", "buyer_type", "buyer_region", "buyer_sector",
     "order", "delivery", "realized_delivery", "delivery_in_tons",
-    "delivery_offered", "capacity_blocked",
+    "delivery_offered", "capacity_blocked", "pipelined_delivery",
     "product_type", "cargo_type",
     "transport_modes",
     "eq_price", "price",
@@ -283,6 +283,7 @@ class AgentWriters:
                 "delivery_in_tons": link.delivery_in_tons,
                 "delivery_offered": getattr(link, "delivery_offered", 0.0),
                 "capacity_blocked": getattr(link, "capacity_blocked", 0.0),
+                "pipelined_delivery": getattr(link, "pipelined_delivery", 0.0),
                 "product_type": link.product_type,
                 "cargo_type": cargo,
                 "transport_modes": transport_modes,
@@ -643,6 +644,7 @@ def export_mrio_summary(mrio, selected, export_folder: Path):
     """Export MRIO reference summaries for reporting comparison.
 
     Writes three CSVs:
+      - mrio_by_region_sector.csv — output, input, VA, final_demand, export per region-sector (12 Oct 2026)
       - mrio_by_sector.csv    — output, input, VA, final_demand, export per sector
       - mrio_by_region.csv    — output, input, VA per region
       - mrio_by_country.csv   — imports (country as exporter) and
@@ -681,6 +683,10 @@ def export_mrio_summary(mrio, selected, export_folder: Path):
         "mrio_final_demand": fd.reindex(selected, fill_value=0).values,
         "mrio_export": exports.reindex(selected, fill_value=0).values,
     })
+
+    # --- By region-sector (12 Oct 2026): the value-added/output ratio of each country-sector, the coefficient of the
+    # loss accounting (a firm's shortfall x the ratio of its OWN country-sector; the by-sector file below sums over regions)
+    rs_df.to_csv(export_folder / "mrio_by_region_sector.csv", index=False)
 
     # --- By sector ---
     by_sector = rs_df.groupby("sector")[

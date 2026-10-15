@@ -93,10 +93,14 @@ def run_disruption(sc_network, transport_network, firms, households, countries,
             time_resolution=sp.time_resolution,
         )
         if not disruptions:
-            logging.info("No disruptions — running one baseline step and returning")
+            # One baseline step, unless the early stop is off and a longer horizon is asked for:
+            # then every step runs undisturbed (a stationarity check, 6 Oct 2026).
+            undisturbed_final = t_final if (not sp.epsilon_stop and t_final and t_final > 1) else 1
+            logging.info("No disruptions — running one baseline step and returning" if undisturbed_final == 1
+                         else f"No disruptions, early stop off — running {undisturbed_final} undisturbed steps (stationarity check)")
             all_data, logistics_reports, all_routing_summaries = continue_disruption_run(
                 sc_network, transport_network, firms, households, countries,
-                tp, sp, disruptions=[], t_start=1, t_final=1,
+                tp, sp, disruptions=[], t_start=1, t_final=undisturbed_final,
                 all_data=all_data,
                 logistics_reports=logistics_reports,
                 all_routing_summaries=all_routing_summaries,
@@ -643,8 +647,10 @@ def _collect_routing_summary(sc_network, time_step: int) -> list[dict]:
         "total_usd": 0.0,
         "main_usd": 0.0,
         "alternative_usd": 0.0,
+        "pipelined_usd": 0.0,          # delivered by pipeline: no route, no tonnage on the network
         "blocked_usd": 0.0,
         "capacity_blocked_usd": 0.0,   # the part of blocked_usd withheld by the capacity gate
+        "relief_usd": 0.0,             # delivered through the gate's bounded substitution (bulk_relief)
     })
 
     for u, v, data in sc_network.edges(data=True):
@@ -666,7 +672,8 @@ def _collect_routing_summary(sc_network, time_step: int) -> list[dict]:
 
         main_delivery = link.main_route_realized_delivery
         alternative_delivery = link.alternative_route_realized_delivery
-        tracked_total = main_delivery + alternative_delivery
+        pipelined_delivery = getattr(link, "pipelined_delivery", 0.0)
+        tracked_total = main_delivery + alternative_delivery + pipelined_delivery
         if tracked_total <= EPSILON and link.realized_delivery > EPSILON:
             if link.current_route == "alternative":
                 alternative_delivery = link.realized_delivery
@@ -675,6 +682,7 @@ def _collect_routing_summary(sc_network, time_step: int) -> list[dict]:
 
         buckets[bucket]["main_usd"] += main_delivery * link.eq_price
         buckets[bucket]["alternative_usd"] += alternative_delivery * link.eq_price
+        buckets[bucket]["pipelined_usd"] += pipelined_delivery * link.eq_price
 
         # Blocked = ordered but not delivered (supplier rationing, refusals,
         # the substitution ceiling and the capacity gate together); the gate's
@@ -682,6 +690,7 @@ def _collect_routing_summary(sc_network, time_step: int) -> list[dict]:
         blocked = max(0.0, link.served_order - link.realized_delivery) * link.eq_price
         buckets[bucket]["blocked_usd"] += blocked
         buckets[bucket]["capacity_blocked_usd"] += getattr(link, "capacity_blocked", 0.0) * link.eq_price
+        buckets[bucket]["relief_usd"] += getattr(link, "relief_delivery", 0.0) * link.eq_price
 
     rows = []
     for bucket, vals in sorted(buckets.items()):

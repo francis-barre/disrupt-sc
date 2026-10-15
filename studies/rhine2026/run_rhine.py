@@ -68,7 +68,7 @@ sys.setrecursionlimit(50000)
 
 from disruptsc.config import load_config, setup_logging  # noqa: E402
 from disruptsc.run import execute                        # noqa: E402
-from disruptsc.run_pipeline.cache import setup_cache_isolation  # noqa: E402
+from disruptsc.run_pipeline.cache import setup_cache_dir, setup_cache_isolation  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 SCEN = HERE / "scenarios"
@@ -238,11 +238,14 @@ def build_disruptions(reductions: list[float], edges: list[str], min_reduction=0
                       cargo_types: list[str] | None = None,
                       surcharge_edges: list[str] | None = None,
                       lower_rhine_edges: list[str] | None = None,
-                      lower_rhine_factor: float = DEFAULT_LOWER_RHINE_FACTOR) -> list[dict]:
+                      lower_rhine_factor: float = DEFAULT_LOWER_RHINE_FACTOR,
+                      voyage_reductions: list[float] | None = None) -> list[dict]:
     """One disruption entry per week on the Kaub edge (*edges*), plus - with
     *surcharge_edges* (voyage-level surcharge) - one scalar cost shock on the
     other upstream edges at the week's multiplier and one on *lower_rhine_edges*
-    at 1 + (m - 1) x lower_rhine_factor.
+    at 1 + (m - 1) x lower_rhine_factor. *voyage_reductions* (6 Oct 2026), when
+    given, replace *reductions* for those other reaches' surcharges (the
+    fairway offset applied to the Kaub reach alone).
 
     With *closure_floors* (cm per cargo class) and the weekly *gauges*, a week
     closes the edge for the classes at or below their floor (per-cargo
@@ -269,8 +272,10 @@ def build_disruptions(reductions: list[float], edges: list[str], min_reduction=0
     voyage = surcharge_edges is not None
     for t, r in enumerate(reductions, start=1):
         mult = round(min(max_multiplier, 1.0 / (1.0 - r)), 3) if r < 1.0 else float(max_multiplier)
-        if voyage and r >= min_reduction:
-            out.extend(_voyage_entries(t, mult, upstream_other, lower, lower_rhine_factor))
+        rv = voyage_reductions[t - 1] if voyage_reductions is not None else r
+        mult_v = round(min(max_multiplier, 1.0 / (1.0 - rv)), 3) if rv < 1.0 else float(max_multiplier)
+        if voyage and rv >= min_reduction:
+            out.extend(_voyage_entries(t, mult_v, upstream_other, lower, lower_rhine_factor))
         if use_floors:
             closed = closed_classes(gauges[t - 1], closure_floors, cargo_types)
             if closed and len(closed) == len(cargo_types):
@@ -298,6 +303,12 @@ def build_disruptions(reductions: list[float], edges: list[str], min_reduction=0
         if closure_threshold is None:
             out.append({"type": "transport_disruption", "attribute": "name", "values": list(edges),
                         "capacity_reduction": float(r), "start_time": t, "duration": 1})
+            if voyage:
+                # gate + surcharge: the reduced edge is also surcharged (the capacity and the cost
+                # labels are separate edge state; the gate cuts the tonnage, the shipper pays the rest)
+                out.append({"type": "transport_cost_shock", "attribute": "name", "values": list(edges),
+                            "cost_multiplier": mult, "capacity_factor": 1.0, "substitution_share": 1.0,
+                            "start_time": t, "duration": 1})
         elif r >= closure_threshold:
             out.append({"type": "transport_disruption", "attribute": "name", "values": list(edges),
                         "capacity_reduction": 1.0, "start_time": t, "duration": 1,
@@ -317,10 +328,10 @@ def main():
     ap.add_argument("--edges", default=KAUB_EDGE, help="comma-separated rhine_* edge names")
     ap.add_argument("--draught-table", default=str(SCEN / "draught_table.csv"))
     ap.add_argument("--capacities", default=str(SCEN / "rhine_capacities.csv"))
-    ap.add_argument("--edge-capacities",
-                    default=str(ROOT.parent / "disrupt-sc-data" / "EU" / "Transport" / "scenario_edge_capacities.csv"),
+    ap.add_argument("--edge-capacities", default=None,
                     help="baseline-derived rail/road/waterway capacities (baseline_capacities.py); "
-                         "merged into transport_capacity_overrides for the scenario run when the file exists; "
+                         "merged into transport_capacity_overrides for the scenario run when given (since 22 Sep 2026 "
+                         "no default: the file of 3 Sep names edges that no longer exist in the rebuilt network); "
                          "pass an empty string to disable")
     ap.add_argument("--recovery-weeks", type=int, default=8, help="extra weeks after the profile ends")
     ap.add_argument("--flow-coverage", type=float, default=None)
@@ -333,9 +344,16 @@ def main():
                     help="weeks whose capacity reduction is >= this value close the Kaub edge entirely "
                          "(2026 profile at 0.75: the four weeks of 27 Jul-23 Aug); lighter weeks become "
                          "cost shocks x1/(1-reduction) (transport_cost_shock). Set to a negative value "
-                         "to emit partial capacity reductions instead (needs --constraint-mode "
-                         "gradual|binary)")
-    ap.add_argument("--surcharge-scope", choices=["voyage", "kaub"], default="voyage",
+                         "to emit partial capacity reductions instead (needs --constraint-mode on: the "
+                         "gate rations the Kaub edge to load factor x capacity every week, and since 22 Sep "
+                         "2026 the voyage surcharge is paid as well - gate + surcharge)")
+    ap.add_argument("--nb-suppliers-per-input", type=float, default=None,
+                    help="sensitivity: suppliers drawn per input (config default 1); a supply-chain cache key, "
+                         "use with --cache-isolation")
+    ap.add_argument("--cache-dir", default=None,
+                    help="named cache directory tmp/<name>, shared by the paired runs of one supply-chain draw "
+                         "(the first run builds it, the others reuse it)")
+    ap.add_argument("--surcharge-scope", choices=["voyage", "kaub", "none"], default="voyage",
                     help="voyage (default since 7 Sep 2026): the week's multiplier on every Rhine edge from Koblenz "
                          "upstream (scenarios/rhine_capacities.csv order) and 1 + (m - 1) x --lower-rhine-factor on "
                          "the Lower Rhine edges; kaub: the Kaub edge only (runs of 3-7 Sep, surcharge under-priced)")
@@ -385,6 +403,22 @@ def main():
     ap.add_argument("--rail-relief", type=float, default=None,
                     help="adaptation counterfactual: cost multiplier (< 1) on every rail edge for liquid and dry bulk "
                          "in the shock weeks (tank-car trains and paths at the bulk rate: 0.4 = 0.085 -> 0.034 USD/tkm)")
+    ap.add_argument("--bulk-relief-tons", type=float, default=None,
+                    help="bounded substitution (6 Oct 2026, review OR2): tonnes per week of cut bulk that may complete a "
+                         "modal switch to rail after the gate, allocated pro rata (0 or absent = the paper's rule). Anchors: "
+                         "about 50 kt = DB Cargo's 400 wagons at short notice (two rotations a week, 60 t net), about 140 kt = "
+                         "the +0.07 % of rail tonnage per low-water day of Ademmer et al. (Appendix B) in a full low-water month")
+    ap.add_argument("--bulk-relief-penalty", type=float, default=0.15,
+                    help="switching penalty of the relief switch, fraction of the normal freight bill (the container value)")
+    ap.add_argument("--gauge-offset-scope", default="all", choices=["all", "kaub"],
+                    help="where --gauge-offset acts: 'all' = every reach's surcharge and the Kaub capacity see the shifted gauge "
+                         "(the paper's fairway lever); 'kaub' = the Kaub reach's capacity and surcharge only, the other reaches "
+                         "at the observed gauge (the local-reach case, review NS3)")
+    ap.add_argument("--restoration-days", type=float, default=None,
+                    help="inventory_restoration_time in days (the refill of a stock gap; config 30): sensitivity (review OR4)")
+    ap.add_argument("--no-early-stop", action="store_true",
+                    help="run every week of the profile and the recovery even when the model is back at equilibrium "
+                         "(epsilon_stop_condition 0): stationarity checks on an undisturbed profile (6 Oct 2026)")
     ap.add_argument("--cache-isolation", action="store_true",
                     help="private cache directory for this process (cluster batches with several seeds)")
     ap.add_argument("--light-export", action="store_true",
@@ -393,6 +427,9 @@ def main():
     ap.add_argument("--no-pooling", action="store_true",
                     help="sensitivity: no pooling of the same product across regions (input_pooling.enabled False, "
                          "adaptive_supplier_weight False): the region-keyed rule of the runs before 9 Sep 2026")
+    ap.add_argument("--no-pipelines", action="store_true",
+                    help="sensitivity: no pipelined flows (pipelined_flows.products empty): crude and gas (B06) "
+                         "routed as barge cargo, the rule of the runs before 22 Sep 2026")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--cache", default="auto",
                     help="cache preset passed to execute(); 'auto' reuses every stage whose fingerprint "
@@ -406,13 +443,17 @@ def main():
     args = ap.parse_args()
 
     setup_logging(args.log_level)
-    profile = pd.read_csv(SCEN / f"{args.profile}.csv")
+    profile_observed = pd.read_csv(SCEN / f"{args.profile}.csv")
+    profile = profile_observed
     if args.gauge_offset:
         profile = profile.assign(kaub_cm=profile["kaub_cm"].astype(float) + args.gauge_offset)
         print(f"gauge offset {args.gauge_offset:+.0f} cm on every week (fairway counterfactual; the table and the "
-              f"floors see the shifted gauge)")
+              f"floors see the shifted gauge" + ("; Kaub reach only, the other reaches' surcharges at the observed gauge)"
+                                                 if args.gauge_offset_scope == "kaub" else ")"))
     curve = load_factor_curve(Path(args.draught_table))
     reductions = weekly_reductions(profile, curve)
+    # the surcharges of the other reaches follow the observed gauge when the offset is local to Kaub
+    voyage_reductions = weekly_reductions(profile_observed, curve) if (args.gauge_offset and args.gauge_offset_scope == "kaub") else None
     edges = [e.strip() for e in args.edges.split(",") if e.strip()]
     closure = args.closure_threshold if (args.closure_threshold is not None and args.closure_threshold >= 0) else None
     if closure is None and args.constraint_mode == "off":
@@ -425,7 +466,9 @@ def main():
     if floors is not None and gauges is None:
         print("profile has no kaub_cm column: closure floors by cargo class not applicable, single floor used")
         floors = None
-    if args.surcharge_scope == "voyage" and closure is not None:
+    # gate + surcharge (22 Sep 2026, user decision): with the capacity gate the weekly load factor is a
+    # quantity constraint on the Kaub edge AND the observed surcharge is paid on the voyage
+    if args.surcharge_scope == "voyage" and (closure is not None or args.constraint_mode == "on"):
         upstream, lower_rhine = rhine_chain(args.capacities)
     else:
         upstream, lower_rhine = None, None
@@ -433,7 +476,8 @@ def main():
                                     substitution_share=args.substitution_share,
                                     gauges=gauges, closure_floors=floors, cargo_types=cargo_types,
                                     surcharge_edges=upstream, lower_rhine_edges=lower_rhine,
-                                    lower_rhine_factor=args.lower_rhine_factor)
+                                    lower_rhine_factor=args.lower_rhine_factor,
+                                    voyage_reductions=voyage_reductions)
     if args.rail_relief is not None:
         rail = rail_relief_entries(reductions, args.rail_relief, cargo_types)
         disruptions.extend(rail)
@@ -444,9 +488,10 @@ def main():
     if floors is not None:
         rule = "closure floors " + ", ".join(f"{ct} <= {floors.get(ct, floors['default']):.0f} cm" for ct in cargo_types)
     else:
-        rule = ("closure >= " + format(closure, ".0%")) if closure is not None else "partial reductions"
+        rule = ("closure >= " + format(closure, ".0%")) if closure is not None else (
+            "partial capacity reductions (gate)" + (" + voyage surcharge" if upstream else ""))
     scope = (f"voyage surcharge: {len(upstream)} upstream edges at m, {len(lower_rhine)} Lower Rhine edges at "
-             f"1+(m-1)x{args.lower_rhine_factor:.2f}" if upstream else "surcharge on the Kaub edge only")
+             f"1+(m-1)x{args.lower_rhine_factor:.2f}" if upstream else ("no surcharge" if args.surcharge_scope == "none" else "surcharge on the Kaub edge only"))
     print(f"profile {args.profile}: {len(reductions)} weeks, {len(kaub)} disrupted weeks ({rule}; {scope}), "
           f"max reduction {max(reductions):.0%}, t_final={t_final}, edges={edges}")
     for d in kaub:
@@ -520,9 +565,25 @@ def main():
         config.setdefault("filepaths", {})["input_criticality"] = str(Path(args.input_criticality).resolve())
     if args.critical_input_threshold is not None:
         config["critical_input_threshold"] = args.critical_input_threshold
+    if args.no_early_stop:
+        config["epsilon_stop_condition"] = 0.0
+        print("early stop off: every week of the profile and the recovery is run")
+    if args.restoration_days is not None:
+        config["inventory_restoration_time"] = float(args.restoration_days)
+        print(f"inventory restoration time {args.restoration_days:g} days (config {load_config(args.scope).get('inventory_restoration_time', 30)})")
+    if args.bulk_relief_tons is not None and args.bulk_relief_tons > 0:
+        config.setdefault("logistics", {})["bulk_relief"] = {
+            "weekly_tons": float(args.bulk_relief_tons), "cargo_types": ["dry_bulk", "liquid_bulk"],
+            "modes": ["railways"], "penalty": float(args.bulk_relief_penalty)}
+        print(f"bounded substitution: up to {args.bulk_relief_tons:,.0f} t a week of cut bulk may switch to rail at a "
+              f"penalty of {args.bulk_relief_penalty:.2f} of the freight bill, pro rata when the candidates exceed it")
     if args.no_pooling:
         config["input_pooling"] = {"enabled": False}
         config["adaptive_supplier_weight"] = False
+    if args.no_pipelines:
+        config["pipelined_flows"] = {"products": []}
+    if args.nb_suppliers_per_input is not None:
+        config["nb_suppliers_per_input"] = args.nb_suppliers_per_input
     if args.light_export:
         config["export_link_data"] = False
         config["export_inventory_data"] = False
@@ -530,6 +591,8 @@ def main():
 
     if args.cache_isolation:
         setup_cache_isolation(args.scope)
+    elif args.cache_dir:
+        setup_cache_dir(args.cache_dir)
     export_folder = Path(args.out) if args.out else RUNS_DIR / f"{args.profile}_seed{args.seed}"
     print(f"Export folder: {export_folder}")
     execute(config, cache=(args.cache or None), export_folder=export_folder, open_report=not args.no_open)

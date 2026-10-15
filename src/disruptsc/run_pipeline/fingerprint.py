@@ -128,7 +128,8 @@ _STAGE_CONFIG_KEYS = {
         # inventory targets are re-applied on every cache load (run.py
         # _configure_firms), like the household-inventory config — a
         # sensitivity on them must not rebuild the agents (EU: ~1 h per run).
-        "inventory_restoration_time",
+        # NOT inventory_restoration_time since 6 Oct 2026: re-applied on load
+        # (run.py _configure_firms), it acts in plan_purchase only.
         "capital_to_value_added_ratio", "country_transport_share",
         "firm_transport_share",
     ),
@@ -222,7 +223,7 @@ def build_stage_fingerprint(config: dict, stage: str) -> dict:
 # invalidate the build caches: the modal-switch penalty is read in
 # send_shipment when a link is rerouted, never during network, agent or route
 # construction (a sensitivity on it re-uses every cache).
-_STAGE_EXCLUDED_SUBKEYS = {"logistics": ("switching_costs",)}
+_STAGE_EXCLUDED_SUBKEYS = {"logistics": ("switching_costs", "bulk_relief")}   # bulk_relief: read by the capacity gate only (6 Oct 2026)
 
 
 def _without_subkeys(key: str, value):
@@ -244,7 +245,34 @@ def _git_sha() -> str | None:
         return out.decode().strip()
     except (FileNotFoundError, subprocess.CalledProcessError,
             subprocess.TimeoutExpired):
-        return None
+        return _git_sha_from_files()
+
+
+def _git_sha_from_files() -> str | None:
+    """HEAD read from the .git folder itself (the cluster jobs have no git binary on their PATH, which left
+    git_sha null in every run fingerprint to 12 Oct 2026)."""
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        git_dir = parent / ".git"
+        if git_dir.is_dir():
+            try:
+                head = (git_dir / "HEAD").read_text().strip()
+                if not head.startswith("ref:"):
+                    return head
+                ref = head.split(":", 1)[1].strip()
+                ref_file = git_dir / ref
+                if ref_file.exists():
+                    return ref_file.read_text().strip()
+                packed = git_dir / "packed-refs"
+                if packed.exists():
+                    for line in packed.read_text().splitlines():
+                        parts = line.split()
+                        if len(parts) == 2 and parts[1] == ref:
+                            return parts[0]
+            except OSError:
+                return None
+            return None
+    return None
 
 
 def _path_str(value) -> str | None:

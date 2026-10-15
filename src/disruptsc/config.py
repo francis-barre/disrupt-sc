@@ -57,6 +57,20 @@ def load_config(scope: str, parameter_folder: Path = None) -> dict:
             f"No user-defined or local parameter file for {scope}; using defaults"
         )
 
+    # Final overlay from DISRUPT_SC_EXTRA_CONFIG (a YAML file path): lets
+    # cluster batch tasks inject per-task parameters (e.g. a criticality
+    # edge chunk) without touching the shared config files.
+    extra = os.environ.get("DISRUPT_SC_EXTRA_CONFIG")
+    if extra:
+        if not os.path.exists(extra):
+            raise FileNotFoundError(f"DISRUPT_SC_EXTRA_CONFIG points to a "
+                                    f"missing file: {extra}")
+        logging.info(f"Loading extra config overlay: {extra}")
+        with open(extra, "r") as f:
+            overrides = yaml.safe_load(f)
+        if overrides:
+            _merge_dicts(config, overrides)
+
     config["scope"] = scope
     if config.get("events") and not config.get("disruptions"):
         logging.warning("'events' is deprecated; use 'disruptions' instead.")
@@ -320,6 +334,7 @@ def build_params(config: dict) -> tuple[TransportParams, SimParams, AgentParams,
         rationing_mode=rationing_mode,
         use_route_cache=config.get("use_route_cache", True),
         switching_costs=logistics.get("switching_costs", {"modal_switch": 0.15, "port_switch": 0.05}),
+        bulk_relief=dict(logistics.get("bulk_relief") or {}),
         price_increase_threshold=config.get("price_increase_threshold", 2.0),
         delivered_price_increase_threshold=config.get("delivered_price_increase_threshold"),
         sectors_no_transport=tuple(config.get("sectors_no_transport_network",
