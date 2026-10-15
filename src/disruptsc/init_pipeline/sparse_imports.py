@@ -106,13 +106,15 @@ def sparsify_import_mixes(
                     (matrix[:, left] > 0) & (matrix[:, right] > 0)
                 )
                 rng.shuffle(shared_rows)
-                for offset in range(0, len(shared_rows) - 1, 2):
-                    if links <= target_links or pivots >= _MAX_CYCLE_PIVOTS:
-                        break
-                    i, k = int(shared_rows[offset]), int(shared_rows[offset + 1])
-                    links -= _pivot_cycle(matrix, row_targets, i, k, left, right)
-                    pivots += 1
-                    pass_pivots += 1
+                paired_rows = shared_rows[:len(shared_rows) // 2 * 2].reshape(-1, 2)
+                removed, processed = _pivot_cycle(
+                    matrix, row_targets, paired_rows[:, 0], paired_rows[:, 1],
+                    left, right, max_cycles=_MAX_CYCLE_PIVOTS - pivots,
+                    links_to_remove=links - target_links,
+                )
+                links -= removed
+                pivots += processed
+                pass_pivots += processed
                 if links <= target_links or pivots >= _MAX_CYCLE_PIVOTS:
                     break
             if pass_pivots == 0:
@@ -160,23 +162,30 @@ def sparsify_import_mixes(
     return result
 
 
-def _pivot_cycle(matrix, row_targets, i, k, j, l):
-    a, b = matrix[i, j], matrix[i, l]
-    c, d = matrix[k, j], matrix[k, l]
-    if min(a / row_targets[i], d / row_targets[k]) <= min(
-        b / row_targets[i], c / row_targets[k]
-    ):
-        delta = min(a, d)
-        matrix[i, j] -= delta
-        matrix[k, l] -= delta
-        matrix[i, l] += delta
-        matrix[k, j] += delta
-    else:
-        delta = min(b, c)
-        matrix[i, l] -= delta
-        matrix[k, j] -= delta
-        matrix[i, j] += delta
-        matrix[k, l] += delta
-    return sum(matrix[row, column] == 0 for row, column in (
-        (i, j), (i, l), (k, j), (k, l)
-    ))
+def _pivot_cycle(matrix, row_targets, rows_i, rows_k, j, l, *, max_cycles,
+                 links_to_remove):
+    """Apply independent 2x2 pivots as a batch, stopping at the old limits."""
+    count = min(len(rows_i), max_cycles)
+    if count == 0:
+        return 0, 0
+
+    rows_i, rows_k = rows_i[:count], rows_k[:count]
+    a, b = matrix[rows_i, j].copy(), matrix[rows_i, l].copy()
+    c, d = matrix[rows_k, j].copy(), matrix[rows_k, l].copy()
+    diagonal = np.minimum(a / row_targets[rows_i], d / row_targets[rows_k]) <= np.minimum(
+        b / row_targets[rows_i], c / row_targets[rows_k]
+    )
+    delta = np.where(diagonal, np.minimum(a, d), np.minimum(b, c))
+    new_a = np.where(diagonal, a - delta, a + delta)
+    new_b = np.where(diagonal, b + delta, b - delta)
+    new_c = np.where(diagonal, c + delta, c - delta)
+    new_d = np.where(diagonal, d - delta, d + delta)
+    removed = np.column_stack((new_a == 0, new_b == 0, new_c == 0, new_d == 0)).sum(axis=1)
+    cumulative_removed = np.cumsum(removed)
+    count = min(count, int(np.searchsorted(cumulative_removed, links_to_remove)) + 1)
+
+    matrix[rows_i[:count], j] = new_a[:count]
+    matrix[rows_i[:count], l] = new_b[:count]
+    matrix[rows_k[:count], j] = new_c[:count]
+    matrix[rows_k[:count], l] = new_d[:count]
+    return int(cumulative_removed[count - 1]), count

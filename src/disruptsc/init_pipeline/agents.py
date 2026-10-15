@@ -887,7 +887,11 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
                     "has no positive usd_per_ton density"
                 )
             imports_per_country[row[0]] = imports_per_country.get(row[0], 0.0) + val
-            imports_per_cs[(row[0], sector)] = imports_per_cs.get((row[0], sector), 0.0) + val
+            if val > 0:
+                # Buyer input mixes omit non-positive IO cells, so seller
+                # existence must use positive flows rather than a signed net.
+                key = (row[0], sector)
+                imports_per_cs[key] = imports_per_cs.get(key, 0.0) + val
             if sector_type not in sectors_no_transport and dens > 0:
                 physical_import_value[row[0]] = physical_import_value.get(row[0], 0.0) + val
                 country_import_tons[row[0]] = country_import_tons.get(row[0], 0.0) + val / dens
