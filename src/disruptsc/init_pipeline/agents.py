@@ -875,7 +875,12 @@ def create_countries(mrio: Mrio, transport_nodes: gpd.GeoDataFrame,
         imp_sub = _rescale(mrio.loc[imp_rows, imp_cols])
         for row, col in kept_import_cells:
             val = float(imp_sub.at[row, col])
-            sector = col[1] if row[1] not in mrio.sectors else row[1]
+            sector = (
+                mrio.import_label
+                if row[1] == mrio.import_label and col[1] not in mrio.sectors
+                else col[1] if row[1] not in mrio.sectors
+                else row[1]
+            )
             dens = sector_density.get(sector, 0.0)
             if sector_table is not None and sector not in sector_types:
                 raise ValueError(f"Imported product {sector!r} has no sector type")
