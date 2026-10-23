@@ -77,6 +77,10 @@ def main(tag: str, overleaf: Path, date_list: str):
     put("AutumnWaveQ", r2(w.loc[12:19].sum() / q26), "autumn trough (weeks 12-19, 7 September - 1 November)")
     e26 = [p.loc[f"2026_{tag}_seed{s}_base", "DEU_%quarter"] for s in range(1, 11)] + [b["DEU_%quarter"]]
     put("EnsMean", r2(np.mean(e26)), "ensemble of 11 supply-chain draws, mean"); put("EnsSd", r2(np.std(e26, ddof=1))); put("EnsMin", r2(min(e26))); put("EnsMax", r2(max(e26)))
+    put("EnsMeanBn", r1(np.mean(e26) * q26 / 1e3), "bn USD, the ensemble mean of the German loss (22 Oct 2026: the headline is the mean over the eleven networks)")
+    eu26 = [p.loc[f"2026_{tag}_seed{s}_base", "EU_cum_mUSD"] for s in range(1, 11)] + [b.EU_cum_mUSD]
+    put("EUlossEnsBn", r1(np.mean(eu26) / 1e3), "bn USD, the 28 economies, mean over the eleven networks")
+    put("DEUnetBn", r1(b.DEU_net_mUSD / 1e3), "bn USD, German net loss (backlog left at the end of the run + the perishable sectors), reference network")
     put("CorridorFirmsBelow", r1(b["firms<99%_peak_%"]), "% of firms below 99 % of baseline output at the peak")
     rec = de[de.sector.str[:1].isin(list("ABCF"))].loss.sum()
     put("PerishableShare", pct(100 * (1 - rec / tot)), "% of the German gross loss in the sectors that cannot catch up (D, E, G-T)")
@@ -169,6 +173,7 @@ def main(tag: str, overleaf: Path, date_list: str):
         name = {"stock7": "Stock", "deep20": "Deep", "fleet": "Fleet", "stock7t": "StockT", "package": "Package"}[lev]
         put(f"Lev{name}", pct(ref), f"{lev}: German gross loss avoided, % of the base, reference draw")
         put(f"Lev{name}Range", f"{pct(min(pairs))}--{pct(max(pairs))}", "range over ten paired draws")
+        put(f"Lev{name}Avg", pct(float(np.mean(pairs + [ref]))), "mean over the eleven networks (reference + ten paired draws)")
         put(f"LevEU{name}", pct(100 * (1 - m.loc[f"2026_{tag}_{lev}", "EU_cum_mUSD"] / b.EU_cum_mUSD)))
     up = sum(p.loc[f"2026_{tag}_seed{s}_fleet", "DEU_peak_%week"] > p.loc[f"2026_{tag}_seed{s}_base", "DEU_peak_%week"] for s in range(1, 11))
     put("FleetPeak", r1(m.loc[f"2026_{tag}_fleet", "DEU_peak_%week"]), f"peak week under the fleet lever, % of a week (base {b['DEU_peak_%week']:.2f}); the peak rises in {up} of 10 further draws")
@@ -228,6 +233,7 @@ def main(tag: str, overleaf: Path, date_list: str):
             put(mac + "Abs", rel(run).lstrip("-"), "the same change without its sign")
         for mac, run in (("RevRailFiftyyy", "2018_rev_rail50"), ("RevRailHundredFortyyy", "2018_rev_rail140")):
             put(mac, r2(r.loc[run, "DEU_%quarter"]), f"{run}: {rel(run, B18)} % against the 2018 base"); put(mac + "Rel", rel(run, B18).replace("-", "$-$"))
+            put(mac + "Abs", rel(run, B18).lstrip("-"), "the same change without its sign")
         for mac, run in (("RevRailFiftyInt", "2018_rev_rail50"), ("RevRailHundredFortyInt", "2018_rev_rail140")):
             put(mac, r1(model_path(RUNS / run, 2018)["ind_integrated_pct_months"]), "2018 industrial integral, percent-months")
         put("RevDeepLocalRemoves", pct(100 * (1 - r.loc["2026_rev_deeplocal", "DEU_cum_mUSD"] / b.DEU_cum_mUSD)), "% of the loss removed by the fairway on the Kaub reach alone")
@@ -298,6 +304,45 @@ def main(tag: str, overleaf: Path, date_list: str):
     s_idx = _series(RUNS / B)[0]
     iq = by_quarter(s_idx)
     put("IndSignedQthree", r2(iq["2026Q3"]).replace("-", "$-$"), "industry, index measure, signed, Q3 2026"); put("IndSignedQfour", r2(iq["2026Q4"]).replace("-", "$-$"), "Q4 2026")
+    # ---- the surcharge bill (20 Oct 2026): extra payments on deliveries, pass-through included, from the link-level run
+    lfp = RUNS / f"2026_{tag}_full" / "link_flows_disrupted.csv.gz"
+    if lfp.exists():
+        lf2 = pd.read_csv(lfp, usecols=["time_step", "buyer_region", "realized_delivery", "price_ratio"]); lf2 = lf2[lf2.time_step >= 1]
+        ex = lf2.realized_delivery * (lf2.price_ratio - 1.0)
+        put("SurchargeBillBn", r1(ex.sum() / 1e3), "bn USD of extra payments on deliveries over the 2026 run, all 28 economies, pass-through included")
+        put("SurchargeBillDEUBn", r1(ex[lf2.buyer_region == "DEU"].sum() / 1e3), "of which on deliveries to German buyers")
+    # ---- the corridor firms (20 Oct 2026): German firms within 50 km of the Rhine chain producing below 99 % of baseline at the peak
+    ftab = RUNS / B / "firm_table.geojson"; etab = RUNS / B / "transport_edges.geojson"
+    if ftab.exists() and etab.exists():
+        import json
+        import geopandas as gpd
+        from shapely.geometry import Point, shape
+        from shapely.ops import unary_union
+        ej = json.load(open(etab, encoding="utf-8"))
+        rhine = unary_union([shape(f["geometry"]) for f in ej["features"] if str(f["properties"].get("name", "")).startswith("rhine_")])
+        fj = json.load(open(ftab, encoding="utf-8"))
+        ft = gpd.GeoDataFrame([{"id": f["properties"]["id"], "region": f["properties"]["region"], "geometry": Point(f["properties"]["long"], f["properties"]["lat"])} for f in fj["features"]], crs="EPSG:4326")
+        rh = gpd.GeoSeries([rhine], crs="EPSG:4326").to_crs(3035).iloc[0]
+        ft = ft.to_crs(3035); ft["dist_km"] = ft.geometry.distance(rh) / 1e3
+        near = set(ft[(ft.region == "DEU") & (ft.dist_km <= 50)].id)
+        pk = int(b.DEU_peak_week)
+        fpk = pd.read_csv(RUNS / B / "firm_data.csv", usecols=["time_step", "firm", "region", "production"])
+        b0p = fpk[fpk.time_step == 0].set_index("firm").production
+        for wk, suf in ((pk, ""), (7, "Aug")):  # week 7 = 3-9 August, the week the DIHK survey of 29 July-4 August closed
+            at = fpk[(fpk.time_step == wk) & (fpk.region == "DEU")].copy(); at["base"] = at.firm.map(b0p)
+            at = at[at.base > 0]
+            sel = at[at.firm.isin(near)]
+            put("CorridorFirmsBelowRhine" + suf, r1(100 * (sel.production < 0.99 * sel.base).mean()), f"% of the {len(sel)} German firms within 50 km of the Rhine producing below 99 % of baseline in week {wk}")
+            put("CorridorStopRhine" + suf, r1(100 * (sel.production < 0.5 * sel.base).mean()), f"% of them producing below half of baseline in week {wk}")
+            put("CorridorFirmsBelowDEU" + suf, r1(100 * (at.production < 0.99 * at.base).mean()), f"the same share over all German firms, week {wk}")
+    # ---- the no-rail runs (jobs_20261020_norail.txt): no bulk may use rail as an alternative
+    nr = AD / "compare_runs_batch_jobs_20261020_norail.csv"
+    if nr.exists():
+        tn = table(nr)
+        for mac, run, base in (("RevNoRail", "2026_rev_norail", B), ("RevNoRailyy", "2018_rev_norail", B18)):
+            if run in tn.index:
+                relv = pct(100 * (tn.loc[run, "DEU_%quarter"] / m.loc[base, "DEU_%quarter"] - 1))
+                put(mac, r2(tn.loc[run, "DEU_%quarter"]), f"{run}: {relv} % against the base"); put(mac + "Rel", relv.replace("-", "$-$")); put(mac + "Abs", relv.lstrip("-"))
     # ---- the batch of 9 October 2026 (jobs_20261009_cross.txt): the levers under the 50 kt rail ceiling, the waves at 15 days
     cx = AD / "compare_runs_batch_jobs_20261009_cross.csv"
     if cx.exists() and len(r):

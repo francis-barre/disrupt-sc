@@ -407,13 +407,27 @@ def main():
                     help="bounded substitution (6 Oct 2026, review OR2): tonnes per week of cut bulk that may complete a "
                          "modal switch to rail after the gate, allocated pro rata (0 or absent = the paper's rule). Anchors: "
                          "about 50 kt = DB Cargo's 400 wagons at short notice (two rotations a week, 60 t net), about 140 kt = "
-                         "the +0.07 % of rail tonnage per low-water day of Ademmer et al. (Appendix B) in a full low-water month")
+                         "the +0.07 %% of rail tonnage per low-water day of Ademmer et al. (Appendix B) in a full low-water month")
     ap.add_argument("--bulk-relief-penalty", type=float, default=0.15,
                     help="switching penalty of the relief switch, fraction of the normal freight bill (the container value)")
     ap.add_argument("--gauge-offset-scope", default="all", choices=["all", "kaub"],
                     help="where --gauge-offset acts: 'all' = every reach's surcharge and the Kaub capacity see the shifted gauge "
                          "(the paper's fairway lever); 'kaub' = the Kaub reach's capacity and surcharge only, the other reaches "
                          "at the observed gauge (the local-reach case, review NS3)")
+    ap.add_argument("--line-haul-km", type=float, default=None,
+                    help="switching rule: a mode counts as a main leg of the normal route when it carries at least this many km "
+                         "(config 100); 500 makes every rail bypass of Kaub a switch of mode, prohibitive for bulk (no-rail runs, 20 Oct 2026)")
+    ap.add_argument("--access-km", type=float, default=None,
+                    help="switching rule: the extra km allowed on a mode that only served access in the normal route (config 50)")
+    ap.add_argument("--config-set", action="append", default=[], metavar="PATH=VALUE",
+                    help="override a config key (dotted path; VALUE = JSON, else YAML, or @<yaml file>; repeatable): the recalibration rounds of 23 Oct 2026, "
+                         "e.g. --config-set logistics.basic_cost.waterways.container=0.015; a dict value replaces the node; "
+                         "network/route keys need --cache-isolation")
+    ap.add_argument("--container-water-cost", type=float, default=None,
+                    help="container rate on waterways, USD per ton-km (config 0.022); the container sensitivity of 22 Oct 2026 puts the "
+                         "Rhine containers on the river; changes the routes, so run with --cache-isolation")
+    ap.add_argument("--container-water-vot", type=float, default=None,
+                    help="container value of time on waterways, USD per ton-hour (config 0.35); same caveat")
     ap.add_argument("--restoration-days", type=float, default=None,
                     help="inventory_restoration_time in days (the refill of a stock gap; config 30): sensitivity (review OR4)")
     ap.add_argument("--no-early-stop", action="store_true",
@@ -460,6 +474,28 @@ def main():
         raise SystemExit("partial capacity reductions need --constraint-mode gradual|binary; "
                          "with capacity routing off use --closure-threshold (default 0.75)")
     config = load_config(args.scope)
+    for item in args.config_set:
+        import json as _json
+        import yaml as _yaml
+        path, _, raw = item.partition("=")
+        if not path or not _:
+            raise SystemExit(f"--config-set expects PATH=VALUE, got {item!r}")
+        if raw.startswith("@"):
+            with open(raw[1:], encoding="utf-8") as fh:
+                val = _yaml.safe_load(fh)
+        else:
+            try:
+                val = _json.loads(raw)
+            except ValueError:
+                val = _yaml.safe_load(raw)
+        node = config
+        keys = path.split(".")
+        for k in keys[:-1]:
+            if not isinstance(node.get(k), dict):
+                node[k] = {}
+            node = node[k]
+        node[keys[-1]] = val
+        print(f"config override: {path} = {val!r}" + ("" if args.cache_isolation else "  (no --cache-isolation: fine only for run-time keys)"))
     floors = parse_closure_floors(args.closure_floors) if closure is not None else None
     cargo_types = cargo_types_from_config(config)
     gauges = profile["kaub_cm"].astype(float).tolist() if "kaub_cm" in profile.columns else None
@@ -571,6 +607,28 @@ def main():
     if args.restoration_days is not None:
         config["inventory_restoration_time"] = float(args.restoration_days)
         print(f"inventory restoration time {args.restoration_days:g} days (config {load_config(args.scope).get('inventory_restoration_time', 30)})")
+    if args.container_water_cost is not None or args.container_water_vot is not None:
+        lg = config.setdefault("logistics", {})
+        if args.container_water_cost is not None:
+            bc = lg.setdefault("basic_cost", {}); ww = bc.get("waterways", 0.010)
+            if not isinstance(ww, dict):
+                ww = {"default": float(ww)}
+            ww["container"] = float(args.container_water_cost); bc["waterways"] = ww
+        if args.container_water_vot is not None:
+            cot = lg.setdefault("cost_of_time", {}); cc = cot.get("container", 1.0)
+            if not isinstance(cc, dict):
+                cc = {"default": float(cc)}
+            cc["waterways"] = float(args.container_water_vot); cot["container"] = cc
+        print(f"container sensitivity: waterway rate {lg['basic_cost']['waterways'].get('container')} USD/tkm, "
+              f"waterway value of time {lg['cost_of_time']['container'].get('waterways')} USD/t.h (routes rebuild: "
+              f"{'private caches' if args.cache_isolation else 'WARNING: no --cache-isolation, the shared caches would be rebuilt'})")
+    if args.line_haul_km is not None or args.access_km is not None:
+        sc = config.setdefault("logistics", {}).setdefault("switching_costs", {})
+        if args.line_haul_km is not None:
+            sc["line_haul_km"] = float(args.line_haul_km)
+        if args.access_km is not None:
+            sc["access_km"] = float(args.access_km)
+        print(f"switching rule: line_haul_km {sc.get('line_haul_km')}, access_km {sc.get('access_km')} (switching_costs is outside the cache fingerprint)")
     if args.bulk_relief_tons is not None and args.bulk_relief_tons > 0:
         config.setdefault("logistics", {})["bulk_relief"] = {
             "weekly_tons": float(args.bulk_relief_tons), "cargo_types": ["dry_bulk", "liquid_bulk"],

@@ -25,6 +25,7 @@ import geopandas as gpd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from print_style import finish  # noqa: E402  text at print size (13 Oct 2026)
 import numpy as np
 import pandas as pd
 
@@ -106,6 +107,7 @@ def fig_modal_split(edges: gpd.GeoDataFrame, out: Path):
              "road traffic by construction (firms at NUTS2/3 points); judge rail and waterways by tonne-km as well.",
              fontsize=7, color=INK3)
     fig.suptitle("Inland freight by mode, % of tonne-km", x=0.01, ha="left", fontsize=11, color=INK)
+    finish(fig)
     fig.tight_layout(rect=(0, 0.11, 1, 0.95))
     for ext in ("png", "pdf"):
         fig.savefig(out / f"F2_modal_split.{ext}", dpi=300, facecolor=SURFACE)
@@ -153,6 +155,7 @@ def fig_rhine_profile(edges: gpd.GeoDataFrame, out: Path):
     ax.legend(frameon=False, fontsize=8, labelcolor=INK2, loc="upper left")
     fig.text(0.01, 0.005, "Kaub (km 546) shaded: the scenario edge. CCNR 2023: Emmerich 118 Mt, Iffezheim 16 Mt; other points interpolated from port volumes.",
              fontsize=7, color=INK3)
+    finish(fig)
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     for ext in ("png", "pdf"):
         fig.savefig(out / f"F3_rhine_profile.{ext}", dpi=300, facecolor=SURFACE)
@@ -163,10 +166,10 @@ def fig_network_map(edges: gpd.GeoDataFrame, firms: gpd.GeoDataFrame, out: Path)
     fig, ax = plt.subplots(figsize=(8, 8))
     fig.patch.set_facecolor(SURFACE); ax.set_facecolor(SURFACE)
     e = edges.to_crs(3035)
-    for mode, lw, alpha in (("maritime", 0.4, 0.35), ("roads", 0.5, 0.6), ("railways", 0.5, 0.6), ("waterways", 0.9, 0.9)):
+    for mode, lw, alpha in (("maritime", 0.4, 0.22), ("roads", 0.5, 0.6), ("railways", 0.5, 0.6), ("waterways", 0.9, 0.9)):
         sub = e[e["type"] == mode]
         if len(sub):
-            sub.plot(ax=ax, color=SERIES.get(mode, INK3), linewidth=lw, alpha=alpha, zorder=2)
+            sub.plot(ax=ax, color=("#c9ced6" if mode == "maritime" else SERIES.get(mode, INK3)), linewidth=lw, alpha=alpha, zorder=2)
     rh = e[e["name"].astype(str).str.startswith("rhine")]
     rh.plot(ax=ax, color=SERIES["waterways"], linewidth=2.2, zorder=4)
     kaub = rh[rh["name"].astype(str) == "rhine_mainz_koblenz"]
@@ -182,7 +185,7 @@ def fig_network_map(edges: gpd.GeoDataFrame, firms: gpd.GeoDataFrame, out: Path)
         c = kaub.geometry.unary_union.centroid
         ax.annotate("Kaub reach", xy=(c.x, c.y), xytext=(c.x - 7.5e5, c.y - 5.5e5), fontsize=8, color=INK,
                     arrowprops=dict(arrowstyle="-", color=INK2, linewidth=0.8), zorder=6)
-        ins = ax.inset_axes([0.015, 0.50, 0.36, 0.36])
+        ins = ax.inset_axes([0.005, 0.615, 0.34, 0.34])
         ins.set_facecolor("white")
         x0, y0, x1, y1 = rh.total_bounds
         pad = 0.6e5
@@ -210,10 +213,11 @@ def fig_network_map(edges: gpd.GeoDataFrame, firms: gpd.GeoDataFrame, out: Path)
         ins.set_title("The Rhine chain, Basel to Rotterdam; the Kaub reach in orange", fontsize=7, color=INK2, loc="left")
     from matplotlib.lines import Line2D
     handles = [Line2D([0], [0], color=SERIES[m], lw=2, label=MODE_LABEL[m]) for m in ("roads", "railways", "waterways")]
-    handles.append(Line2D([0], [0], color=INK3, lw=1.5, alpha=0.6, label="Maritime lanes"))
-    handles.append(Line2D([0], [0], marker="o", color="none", markerfacecolor=INK, alpha=0.4, markersize=7, label="Firm points (area = baseline output)"))
-    ax.legend(handles=handles, loc="lower left", frameon=False, fontsize=8, labelcolor=INK2)
+    handles.append(Line2D([0], [0], color="#c9ced6", lw=1.5, label="Maritime lanes"))
+    handles.append(Line2D([0], [0], marker="o", color="none", markerfacecolor=INK, alpha=0.4, markersize=7, label="Firm points"))
+    ax.legend(handles=handles, loc="upper right", frameon=True, facecolor="white", edgecolor=INK3, framealpha=1.0, fontsize=8, labelcolor=INK2)
     ax.set_title("EU scope: TEN-T multimodal network and firm geography (Rhine chain highlighted)", loc="left", fontsize=10, color=INK)
+    finish(fig)
     fig.tight_layout()
     for ext in ("png", "pdf"):
         fig.savefig(out / f"F1_network_firms.{ext}", dpi=300, facecolor=SURFACE)

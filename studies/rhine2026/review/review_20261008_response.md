@@ -98,3 +98,81 @@ Reader: `read_batch_20261009_cross.py` (writes `additional_data/batch_20261009_c
 ## Numbers pending the recompute
 
 The batch tables are recomputed on the cluster (the runs without local firm tables cannot be reaggregated here); until then `numbers.tex` carries the values as issued. The local recompute of the reference runs reproduces the review's figures exactly.
+
+
+## Numbers after the recompute (cluster recompare of 12 October; Overleaf 2041cd0)
+
+| Quantity | As issued (scope-wide ratios) | Corrected (country-sector ratios) |
+|---|---:|---:|
+| 2026 forecast, German loss, % of a quarter (reference draw) | 1.54 | 1.64 |
+| eleven draws, mean +/- s.d. | 1.30 +/- 0.37 | 1.35 +/- 0.38 (range 0.68 to 1.78) |
+| industry part, % of a quarter; share of the loss | 0.54; 35 % | 0.61; 37 % |
+| services (G to T) share; construction; utilities (D+E) | 47; 14; 14 % | 44; 16; 17 % |
+| EU loss, bn USD | 16.9 | 17.9 |
+| 2018 reference; eleven draws | 0.94; 0.80 +/- 0.23 | 0.98; 0.82 +/- 0.24 |
+| 2018 industrial integral, percent-months (production-weighted B-E as issued; index measure, German VA weights B-D, corrected); record 5.3, band 3.6 to 7.1 | 4.6 | 3.9 |
+| draws inside the record's 16-84 % band; inside the 95 % band | 6 of 11; 9 | 4 of 11; 7 |
+| loading table, shortfall x1.15 / x0.85, 2018 integral | 6.1 / 3.2 | 5.2 / 2.7 |
+| stock ladder x1.25 / 1.5 / 2 (2018, % of a quarter) | 0.69 / 0.53 / 0.34 | 0.72 / 0.55 / 0.35 |
+| levers: stocks / fairway / fleet / targeted / package, % avoided | 45 / 38 / 17 / 22 / 80 | 46 / 39 / 17 / 22 / 80 |
+| crossed with rail 50 kt | 48 / 42 / 20 / 28 | 48 / 43 / 20 / 28; overlap with the rail benefit 12 / 8 / 2 / 0 % |
+| waves: A + B apart; in sequence; interaction | 1.38; 1.54; +12 % | 1.45; 1.64; +13 % (gap 4: +3 %; at 15 days: +2 %, -9 %, -13 %) |
+| flat profile | 1.16 | 1.22 |
+| rail 50 kt / 140 kt (2026) | 1.23 / 0.75 | 1.30 / 0.78 |
+| 2026 industrial integral on the index measure (record on the same days 6.3) | 5.6 (production-weighted) | 4.5 |
+| signed value-added change, Q3 / Q4 2026, % of the quarter (gross 0.80 / 0.88) | - | +0.62 / -0.40 |
+
+The qualitative results are unchanged: the ordering of the levers (stocks ahead of the fairway in 7 of 10 draws, the fleet last in 9 of 10), the sign and decay of the wave interaction, the priced river's late onset, the sector groups' order. What changed in the argument: the 2018 comparison is weaker on the index measure (3.9 against 5.3, four of eleven draws in the band), the claim that the table as built fits best is withdrawn, and the abstract says "lies within the band of the econometric record" instead of "reproduces".
+
+
+## 20 October: the author's revision applied (Overleaf 201c872, 54 inline CC notes)
+
+The plan validated in the chat (A to E) was applied on top of the author's text, after two clarifications:
+
+- No waterway bypass of Kaub exists in the network (the rhine_* chain is the only water path between the Lower and the Upper Rhine). The only bypass is 89 km of rail between Koblenz and Mainz (plus two connectors). Under the switching rule a bulk shipment may use it at no penalty only if its normal route already carries a main leg by rail (at least 100 km); 15 % of the Kaub-crossing bulk orders have such a route; at a 500 km threshold 97 % give up. We have no data on the share of the Kaub traffic that travels combined rail-barge, so the text states the bypass as an assumption of the routing and a pair of no-rail runs (line-haul threshold 500 km, 2026 and 2018) bounds its effect: cluster/jobs_20261020_norail.txt, to launch with --independent (switching_costs is outside the cache fingerprint).
+- The surcharge: delivered price = supplier price x (1 + transport share x cost change); own price = equilibrium price + unit-cost pass-through; no demand response; no refusal at these surcharges. The extra payments over the 2026 run are 1.1 bn USD across the 28 economies (1.0 bn on deliveries to German buyers), passed down the chain in prices, against 15.7 bn of production loss; the surcharge-only run loses nothing.
+
+What changed in the manuscript: abstract; introduction rewritten (the Rhine valley as the industrial core, the four Rhine states at 48 % of German GDP [vgrdl2025], "only 72 %" of normal rainfall, 25 cm against 1.5 m, the four results); Results: the model subsection with the Pichler criticality citation, the Lower Rhine residual explained, the rail-bypass sentence; the 2018 test with the Bundesbank citation, "benchmark" with its one-standard-deviation band, the selection summarized in one paragraph (details in the new SI S9), the corridor-survey comparison on the survey week; the capacity section retitled "Reduced river capacity, not the surcharge, drives the loss" with the surcharge bill and the placeholder todo for the no-rail runs; who-loses in four paragraphs; adaptation rewritten with the inventory-per-loss figures moved there from Methods; Discussion aligned (inventories, episodes, benchmark, the corridor gap); every Methods line note addressed; SI: S9 (selection on 2018) and S10 (implementation conventions, fleet lever, benchmark reconstruction) added; vocabulary: stocks -> inventories, stock-outs -> shortages, troughs -> episodes, record -> benchmark; references vgrdl2025, bundesbank2025, ebv2025 added. Remaining todos: the marker legend, the no-rail placeholder, code availability.
+
+Corridor firms (new macros, base run 2026_s07_base): in week 7 (3-9 August, the week the DIHK survey of 29 July-4 August closed) 13.5 % of the 370 German firms within 50 km of the Rhine produce below 99 % of baseline and 4.3 % below half of it (survey: 33 % production restrictions, 6 % stops); at the autumn peak (week 17) 23.2 and 18.9 %; over all German firms 8.5 and 12.8 %. The text says "only partly reproduced; the model is on the low side" (an earlier draft said "a few percent", which the numbers do not support).
+
+Code: run_rhine.py takes --line-haul-km and --access-km; make_numbers writes SurchargeBillBn (1.1), SurchargeBillDEUBn (1.0), the Corridor* macros, Abs variants of the 2018 rail macros and the RevNoRail* macros when compare_runs_batch_jobs_20261020_norail.csv exists; si_tables says benchmark and inventory and lists the no-rail rows when their table exists; figures F9 (benchmark, inventory multiplier, legend of panel b moved off the data), F10 (episodes), F4c and F7 (inventories) regenerated. Lint clean (macros, labels, citations, braces). Word counts: abstract 192, introduction 1090, Results 4071, Discussion 1778.
+
+Pending: the no-rail runs; then the compare table fills RevNoRail* and the revision table, and the placeholder todo in the capacity section and the limitation sentence of the Discussion are replaced by the result.
+
+
+## 21 October: the no-rail runs (jobs_20261020_norail.txt)
+
+Both runs used the 500 km main-leg threshold (parameters.yaml: switching_costs.line_haul_km 500.0; the fingerprint records it), so no bulk shipment has a rail alternative around Kaub. Table: additional_data/compare_runs_batch_jobs_20261020_norail.csv (cluster compare_runs, country-sector value-added ratios).
+
+| Run | German loss, % of a quarter | against the base | peak, % of a week (week) | EU loss, bn USD | bulk rerouted over the run, bn USD | bulk blocked, bn USD |
+|---|---:|---:|---:|---:|---:|---:|
+| 2026 base | 1.64 | - | 2.82 (17) | 17.9 | 21.8 | 16.8 |
+| 2026 no rail | 2.02 | +23 % | 3.01 (17) | 21.7 | 18.0 | 19.4 |
+| 2018 base | 0.98 | - | 1.16 (21) | 11.0 | 19.3 | 11.1 |
+| 2018 no rail | 1.29 | +32 % | 1.54 (21) | 14.2 | 17.2 | 13.2 |
+
+Reading: the rail bypass that the rule grants to bulk with a rail main leg is worth about a quarter of the 2026 loss and a third of the 2018 loss; the peak weeks do not move. The rerouted bulk that remains in the no-rail runs (18 bn USD) is same-mode rerouting on the surcharged Lower Rhine and elsewhere, not a Kaub bypass; the Kaub bypass is the difference between the two runs (about 4 bn USD of bulk over the 2026 season, a tenth of what the river turns away).
+
+Where it goes: the capacity section of Results (replaces the placeholder todo), the uncertainty paragraph and the caption of the uncertainty figure (the rail group now shows none / 50 / 140 kt), the limitations paragraph of the Discussion, SI S8 (the exception in the rule stated, the pair of runs reported), Table S-revision (two rows, generated). The user asked on the evening of 20 Oct not to update the Overleaf copy, so the text changes are held in review/pending_patch_norail_20261021.py; numbers.tex and the tables were generated into a staging folder only, F8 regenerated in the study folder only. Macros ready: RevNoRail 2.02, RevNoRailAbs 23, RevNoRailyy 1.29, RevNoRailyyAbs 32.
+
+
+## 22 October: the author's 54 notes of 21 Oct and the seven decisions applied (Overleaf b8a2f06)
+
+Decisions (all agreed on 22 Oct): D1b a container sensitivity pair (jobs_20261022_container.txt, see below); D2 headline numbers on the mean of the eleven supplier-buyer networks (decompositions by sector, country and shipment on the reference network, labelled; the issued forecast series of 7 Oct stays the reference network's and the mean is scored alongside it); D3 the rail baseline unchanged (bulk does not switch; the 140 kt ceiling explained as an over-reading of the all-cargo regression); D4 the delay cost dropped from the main text; D5 the uncertainty figure moved to the SI, flipped; D6 the measured-economy paragraph folded into one sentence of the calibration paragraph; D7 the August-2026 test moved to the 2026 section.
+
+New macros: EnsMeanBn 12.9 (bn USD, mean German loss over the eleven networks), EUlossEnsBn 14.4, DEUnetBn 14.2, LevStockAvg 41, LevDeepAvg 38, LevFleetAvg 17, LevStockTAvg 24, LevPackageAvg 80 (means over the eleven paired networks). The text fractions were checked against them (targeted inventories now "a quarter").
+
+Answers written into the text: the 78 cm low-water mark; the GDP effect at the trough of 2018 (Kiel); the loading curve built without fitting and kept as its sources give it; the catch-up mechanism behind "sequence cheaper than the sum" (B's first weeks after an 8-week gap 71/240/411 mUSD vs 221/390/606 alone) and the 15-day case; the fleet's higher single worst week with a lower total; rail as a sensitivity at two ceilings; every Rhine stretch has a capacity, only Kaub's is cut and only Kaub saturates; road never a bulk main leg by construction (25 t vs 2,000 t); the inventory lever applies to every economy; France's food chain = French farm products of the Rhine plain shipped by barge (cost routing, flagged as an upper reading); 800 t vs about 400 t for a standard vessel (the "80" and S10's "a tenth" were wrong); the transport share undefined only for sector T; poolable products = standardised goods; several agents per region-sector. Vocabulary: supplier-buyer network everywhere. References added: eurostat2025regio, spam2020, gem2025, climatetrace2024, fineprint2022. Containers on the Rhine and the port residuals stated in Results, Methods and SI S2 (the port numbers of the September baseline, flagged; a table on the final baseline awaits the flows export of 2026_s07_full from the cluster). Remaining todos: the marker legend, "container runs pending", "port table pending", code availability.
+
+Figures: Fig. 2 is now one file (F4_event_2026: gauge + share passing on one panel, weekly loss as mean/IQR/range of the eleven networks); validation figure with the model as mean + grey IQR/range, one legend entry, jittered points, readable event labels, "(a)" labels; wave figure without the vertical line, the sum curve visible, plain labels, no value labels, the 15-day sum line dropped; lever figure as one row (bars = means over the eleven networks, no value labels); who-loses: countries first, billions throughout, proper legend, map cropped to the France-Germany-Denmark box; schematic redrawn (one loading-curve box feeding surcharge and capacity; "delivered with the surcharge" and "cut share looks for another route" on one row feeding the buyer; containers may switch, most bulk waits with the asterisk); network map with whiter sea lanes, the inset up-left, a boxed legend top-right, "Firm points". All panel labels in the "(a)" style.
+
+Word counts after the pass: abstract 199, introduction 1,080, Results 4,200, Discussion 1,800 (approx.).
+
+### Flow recalibration tooling (for November; agent work of 22 Oct, in onboarding/scripts/)
+- tag_network_attributes.py: tags the 462 waterway edges with a waterway/basin from a gazetteer (disrupt-sc-data/EU/validation/waterways_gazetteer.csv, 67 waterways; all edges tagged, 63 tags; Rhine 66 edges) and the sea-port connectors with the Eurostat port (ports_gazetteer.csv, the 60 largest EU ports; 175 connectors / 78 terminals matched to 58 ports; 257 connectors of smaller ports unmatched); writes tagged copies to EU/Transport/tagged/ (untracked, regenerable) and a report.
+- flow_score.py: scores a flows export against ports (Eurostat mar_go_aa), the country modal split (tran_hv_frmod), the NST groups (DE, NL), the Rhine profile, the basins (waterway_targets_2023.csv, 3 rows filled with a source, 19 to fill), and the short-sea share (information only). On the September baseline: mean |log10 error| ports 0.39, country split 0.33, NST 0.24, Rhine 0.20, overall 0.30. Strongest lead: below Tiel the Rhine stream goes to Amsterdam (Amsterdam-Rhine canal 104 Mt/yr, Noordzeekanaal 49) instead of the Waal to Rotterdam (Rotterdam at 0.21x Eurostat, Amsterdam 1.8x, Venice 4.3x); transhipment hubs (Piraeus, Algeciras, Gioia Tauro) cannot match Eurostat because sea-to-sea transhipment is not represented; crude ports fall with the pipeline rule; German waterway tkm 2.0x the Eurostat total, NL 0.57x; deep-sea share of port throughput 72 % vs 41.5 % (intra-EU short sea largely missing).
+- Export changes that would help the scoring (November rebuild): tonnes per flow category per edge; origin type on maritime edges (deep-sea gateway / intra-EU); carry the tags by building from Transport/tagged/; one country code per edge on border rivers.
+
+### The container sensitivity pair (jobs_20261022_container.txt)
+run_rhine.py takes --container-water-cost (0.022 -> 0.015 USD/tkm) and --container-water-vot (0.35 -> 0.15 USD/t.h); the runs carry --cache-isolation (the costs enter the route fingerprint) and the 2026 run --full-export for the flows file; check the Kaub container tonnage at t = 0 (target ~10 Mt/yr) before reading the loss.

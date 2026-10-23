@@ -55,10 +55,16 @@ def main() -> int:
     for c in ("household_loss", "country_loss"):
         m[c] = pd.to_numeric(m[c], errors="coerce").fillna(0.0)
         # The raw columns carry a large constant offset (the no-disruption
-        # reference: in the smoke test a 9.5 t/wk edge read 37,926.585
-        # household / 17,174.787 country). The per-edge criticality signal
-        # is the DELTA; the minimum across all edges estimates the reference.
-        m[c] = m[c] - m[c].min()
+        # reference). Estimate it as the MEDIAN OF THE LOWEST QUARTILE:
+        # robust both to below-reference Braess edges (v24 t1: one Bucharest
+        # edge read ~13.5 mUSD BELOW reference and, as the minimum, inflated
+        # every edge) and to selected populations like Tier 2's top-150,
+        # where the global median is NOT the reference (only the weak tail
+        # sits on it; t2 check: tail of 36 t1-noise edges clustered within
+        # 1.5 mUSD). Small negatives clip to 0.
+        q25 = m[c].quantile(0.25)
+        ref = m.loc[m[c] <= q25, c].median()
+        m[c] = (m[c] - ref).clip(lower=0.0)
     m["total_loss"] = m["household_loss"] + m["country_loss"]
     m["loss_per_kt"] = m["total_loss"] / (m["flow_total_tons"] / 1000).clip(lower=1e-9)
     m["loss_per_km"] = m["total_loss"] / m["km"].clip(lower=1e-3)
@@ -70,7 +76,7 @@ def main() -> int:
     gpd.GeoDataFrame(m, crs=edges.crs).to_file(out / "criticality_map.geojson",
                                                driver="GeoJSON")
     print(f"written {out}/criticality_ranked.csv + criticality_map.geojson")
-    print("\ntop 10 by total loss (mUSD per 1-week closure):")
+    print("\ntop 10 by total loss (mUSD per closure event; t1 = 1 week, t2 = 4 weeks):")
     print(m[["id", "type", "name", "flow_total_tons", "household_loss",
              "country_loss", "total_loss"]].head(10).to_string(index=False))
 

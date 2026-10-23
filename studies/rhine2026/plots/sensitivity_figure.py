@@ -22,6 +22,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from print_style import finish  # noqa: E402  text at print size (13 Oct 2026)
 import numpy as np
 import pandas as pd
 
@@ -45,7 +46,7 @@ def style(ax):
         ax.spines[s].set_visible(False)
     ax.spines["left"].set_color(MUTED); ax.spines["bottom"].set_color(MUTED)
     ax.tick_params(colors=MUTED, labelsize=8)
-    ax.grid(axis="y", color=GRID, linewidth=0.6)
+    ax.grid(axis="x", color=GRID, linewidth=0.6)
     ax.set_axisbelow(True)
 
 
@@ -54,8 +55,11 @@ def main(out: Path):
     p = table(AD / "compare_runs_batch_jobs_20261007_paired.csv")
     rv = AD / "compare_runs_batch_jobs_20261007_rev.csv"
     r = table(rv) if rv.exists() else pd.DataFrame()
+    nr = AD / "compare_runs_batch_jobs_20261020_norail.csv"  # no rail alternative for any bulk (20 Oct 2026)
+    if nr.exists():
+        r = pd.concat([r, table(nr)])
     q = "DEU_%quarter"
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.8), gridspec_kw={"width_ratios": [1.75, 1]})
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 3.6), gridspec_kw={"width_ratios": [1.0, 1.0]})
     fig.patch.set_facecolor("white")
     rng = np.random.default_rng(2)
     for ax, year in zip(axes, ("2026", "2018")):
@@ -63,37 +67,41 @@ def main(out: Path):
         base = m.loc[f"{year}_s07_base", q]
         draws = ([p.loc[f"2026_s07_seed{s}_base", q] for s in range(1, 11)] if year == "2026"
                  else [m.loc[f"2018_s07_seed{s}", q] for s in range(1, 11)])
-        groups = [("supply-chain\ndraws (11)", draws + [base], BLUE),
-                  ("loading table\n(shortfall\n×1.15, ×0.85)", [m.loc[f"{year}_s07_tablelow", q], m.loc[f"{year}_s07_tablehigh", q]], GREEN),
-                  ("two suppliers\nper input", [m.loc[f"{year}_s07_sup2", q]], PINK),
+        groups = [("network\ndraws\n(11)", draws + [base], BLUE),
+                  ("loading\ncurve\n(±15 %)", [m.loc[f"{year}_s07_tablelow", q], m.loc[f"{year}_s07_tablehigh", q]], GREEN),
+                  ("two\nsuppliers", [m.loc[f"{year}_s07_sup2", q]], PINK),
                   ("no input\npooling", [m.loc[f"{year}_s07_nopool", q]], ORANGE)]
         if year == "2026":
-            groups.append(("one channel:\nconstraint only,\nsurcharge only", [m.loc["2026_s07_gateonly", q], m.loc["2026_s07_surchargeonly", q]], MUTED))
+            groups.append(("one\nchannel\nonly", [m.loc["2026_s07_gateonly", q], m.loc["2026_s07_surchargeonly", q]], MUTED))
         if len(r) and f"{year}_rev_rail50" in r.index:
-            groups.append(("substitution\nby rail\n(50, 140 kt a week)", [r.loc[f"{year}_rev_rail50", q], r.loc[f"{year}_rev_rail140", q]], PURPLE))
-        if year == "2026" and len(r) and "2026_rev_rest15" in r.index:
-            groups.append(("refill time of\na stock gap\n(15, 60 days)", [r.loc["2026_rev_rest15", q], r.loc["2026_rev_rest60", q]], TEAL))
-            groups.append(("service propagation:\ncoping 45 days,\nfuel oil non-critical", [r.loc["2026_rev_serv45", q], r.loc["2026_rev_dfuel0", q]], GOLD))
-        ax.axhline(base, color=INK, linewidth=1.2, linestyle="--")
-        ax.text(-0.45, base + 0.04, f"reference {base:.2f}", color=INK, fontsize=7.5, ha="left", va="bottom")
-        top = max(max(v) for lab, v, _ in groups if not lab.startswith("no input")) * 1.22
-        for x, (lab, vals, col) in enumerate(groups):
-            if lab.startswith("no input") and max(vals) > top:
-                ax.scatter([x], [top * 0.97], color=col, marker="^", s=40, zorder=3)
-                ax.annotate(f"{max(vals):.2f} (off scale)", (x, top * 0.97), textcoords="offset points", xytext=(8, -3), fontsize=7.5, color=INK)
-                continue
-            jitter = rng.uniform(-0.12, 0.12, len(vals)) if len(vals) > 2 else np.zeros(len(vals))
-            ax.scatter(x + jitter, vals, color=col, s=26, alpha=0.8, zorder=3)
-            if len(vals) <= 2:
-                for v in vals:
-                    ax.annotate(f"{v:.2f}", (x, v), textcoords="offset points", xytext=(8, -3), fontsize=7.5, color=INK)
+            rail = [r.loc[f"{year}_rev_rail50", q], r.loc[f"{year}_rev_rail140", q]]
+            if f"{year}_rev_norail" in r.index:
+                groups.append(("rail\nnone, 50,\n140 kt", [r.loc[f"{year}_rev_norail", q]] + rail, PURPLE))
             else:
-                ax.text(x + 0.2, float(np.mean(vals)), f"{np.mean(vals):.2f} ± {np.std(vals, ddof=1):.2f}", fontsize=7.5, color=INK, va="center")
-        ax.set_xticks(range(len(groups))); ax.set_xticklabels([g[0] for g in groups], fontsize=7.2)
-        ax.set_xlim(-0.5, len(groups) - 0.4)
-        ax.set_ylim(0, top)
-        ax.set_ylabel("German value-added loss, % of a quarter", color=MUTED, fontsize=8)
-        ax.set_title(("a  " if year == "2026" else "b  ") + f"{year}: sampling, structural and specification uncertainties, and the rules", loc="left", fontsize=9, color=INK)
+                groups.append(("rail\n50, 140 kt", rail, PURPLE))
+        if year == "2026" and len(r) and "2026_rev_rest15" in r.index:
+            groups.append(("refill\ntime\n15, 60 d", [r.loc["2026_rev_rest15", q], r.loc["2026_rev_rest60", q]], TEAL))
+            groups.append(("service\nrules", [r.loc["2026_rev_serv45", q], r.loc["2026_rev_dfuel0", q]], GOLD))
+        ax.axvline(base, color=INK, linewidth=1.2, linestyle="--")
+        ax.text(base + 0.02, -0.5, f"reference {base:.2f}", color=INK, fontsize=7.5, ha="left", va="top")
+        top = max(max(v) for lab, v, _ in groups if not lab.startswith("no input")) * 1.22
+        for y, (lab, vals, col) in enumerate(groups):
+            if lab.startswith("no input") and max(vals) > top:
+                ax.scatter([top * 0.97], [y], color=col, marker=">", s=40, zorder=3)
+                ax.annotate(f"{max(vals):.2f}, off scale", (top * 0.97, y), textcoords="offset points", xytext=(-4, 7), fontsize=7, color=INK, ha="right")
+                continue
+            network = lab.startswith("network")
+            jitter = rng.uniform(-0.12, 0.12, len(vals)) if network else np.zeros(len(vals))
+            ax.scatter(vals, y + jitter, color=col, s=26, alpha=0.8, zorder=3)
+            if network:
+                ax.text(max(vals) + 0.06, y, f"{np.mean(vals):.2f} ± {np.std(vals, ddof=1):.2f}", fontsize=7, color=INK, ha="left", va="center")
+        ax.set_yticks(range(len(groups))); ax.set_yticklabels([g[0].replace("\n", " ") for g in groups], fontsize=7.5)
+        ax.set_ylim(-0.6, len(groups) - 0.3)
+        ax.set_xlim(0, top)
+        ax.invert_yaxis()
+        ax.set_xlabel("German loss (% of a quarter)", color=MUTED, fontsize=8)
+        ax.set_title(("(a) " if year == "2026" else "(b) ") + (f"{year}: sources of uncertainty" if year == "2026" else f"{year}"), loc="left", fontsize=9, color=INK)
+    finish(fig)
     fig.tight_layout(w_pad=2.0)
     out.mkdir(parents=True, exist_ok=True)
     for ext in ("png", "pdf"):
