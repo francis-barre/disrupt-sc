@@ -109,11 +109,12 @@ def sector_of(nace: int) -> str | None:
 
 
 def norm(s: str) -> str:
-    s = str(s)
-    for pre in ("Municipiul ", "Orasul ", "Oras ", "MUNICIPIUL ", "ORASUL ", "ORAS "):
+    # fold diacritics BEFORE stripping prefixes: 'ORAŞ UNGHENI' must become
+    # 'UNGHENI', not keep its prefix because 'ORAŞ ' != 'ORAS ' (v25 fix)
+    s = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode().upper()
+    for pre in ("MUNICIPIUL ", "ORASUL ", "ORAS "):
         if s.startswith(pre):
             s = s[len(pre):]
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().upper()
     return " ".join(s.replace("-", " ").split())
 
 
@@ -237,6 +238,10 @@ def main() -> int:
     for u, jd in uat_jud.items():
         uat_by_cty.setdefault(jud_name.get(jd), {})[norm(uat_name[u])] = u
     rows_ov = []
+    named_rows = []   # D13: overrides with explicit lon/lat become their own
+    # NAMED rows in the committed artifact (exact plant placement) instead of
+    # merging into a UAT aggregate; the refine step then names the point.
+    has_coords = {"lon", "lat"}.issubset(ov.columns)
     for cui, g in ov.groupby("cui", sort=False):
         base = w[w["cui"] == cui]
         if base.empty:
@@ -246,6 +251,12 @@ def main() -> int:
         b = base.iloc[0]
         for r in g.itertuples():
             cty = norm(r.county)
+            if has_coords and pd.notna(getattr(r, "lon", None)):
+                named_rows.append({"sector": r.sector, "county": cty,
+                                   "lau_code": 0, "uat_name": r.firm,
+                                   "lon": float(r.lon), "lat": float(r.lat),
+                                   "value": b["turnover"] * r.share / 1e6})
+                continue
             cand = uat_by_cty.get(cty, {})
             code = cand.get(norm(r.uat))
             if code is None:
@@ -260,8 +271,8 @@ def main() -> int:
         w = w[w["cui"] != cui]
     if rows_ov:
         w = pd.concat([w, pd.DataFrame(rows_ov)], ignore_index=True)
-        print(f"D12 overrides applied: {ov['cui'].nunique()} firms -> "
-              f"{len(rows_ov)} plant rows")
+    print(f"D12/D13 overrides: {ov['cui'].nunique()} firms -> "
+          f"{len(rows_ov)} UAT-level + {len(named_rows)} named exact-coordinate rows")
     grp = (w.groupby(["sec24", "county_use", "uat"])["turnover"].sum()
             .div(1e6).reset_index())
     grp = grp[grp["turnover"] > 0]
@@ -277,6 +288,9 @@ def main() -> int:
                               "uat": "lau_code", "turnover": "value"})
     out = out[["sector", "county", "lau_code", "uat_name", "lon", "lat", "value"]]
     out = out[out["lon"].notna()]
+    if named_rows:
+        out = pd.concat([out, pd.DataFrame(named_rows)[out.columns.tolist()]],
+                        ignore_index=True)
     out.to_csv(OUT_UAT, index=False, float_format="%.6f")
     print(f"registry_uat_2024.csv: {len(out)} rows, "
           f"{out['sector'].nunique()} sectors, {out['lau_code'].nunique()} UATs "

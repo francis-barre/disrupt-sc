@@ -176,3 +176,67 @@ Word counts after the pass: abstract 199, introduction 1,080, Results 4,200, Dis
 
 ### The container sensitivity pair (jobs_20261022_container.txt)
 run_rhine.py takes --container-water-cost (0.022 -> 0.015 USD/tkm) and --container-water-vot (0.35 -> 0.15 USD/t.h); the runs carry --cache-isolation (the costs enter the route fingerprint) and the 2026 run --full-export for the flows file; check the Kaub container tonnage at t = 0 (target ~10 Mt/yr) before reading the loss.
+
+
+## 25 October: recalibration round 1b read, round 2 designed
+
+Round 1b (eight candidates, untagged network, private caches, no capacity gate; scored with flow_score.py against the Eurostat ports, the country and NST modal splits, the CCNR Rhine profile and the Destatis basins; mean |log10(model/target)| per block, 0.3 = a factor 2; the September full run re-scored with the same targets as the reference, 0.334 overall, but it predates the pipeline rule):
+
+| candidate | ports | country split | NST | Rhine | basins | overall |
+|---|---:|---:|---:|---:|---:|---:|
+| reference (Sept) | 0.39 | 0.33 | 0.24 | 0.20 | 0.57 | 0.33 |
+| c01 rail +40 % abroad | 0.47 | 0.33 | 0.24 | 0.24 | 0.55 | 0.36 |
+| c02 waterways dearer | 0.48 | 0.32 | 0.21 | 0.38 | 0.52 | 0.37 |
+| c03 containers 0.015 / VOT 0.15 | 0.48 | 0.34 | 0.38 | 0.44 | 0.73 | 0.44 |
+| c04 sea 0.0025 / container sea VOT 0.30 | 0.47 | 0.34 | 0.23 | 0.24 | 0.51 | 0.36 |
+| c05 port fees 12 USD/t, 36 h | 0.82 | 0.31 | 0.23 | 0.28 | 0.55 | 0.47 |
+| c06 c01+c02+c03 | 0.48 | 0.37 | 0.39 | 0.44 | 0.73 | 0.45 |
+| c07 c06 + c04 | 0.46 | 0.35 | 0.37 | 0.38 | 0.74 | 0.43 |
+| c08 dry-bulk rail 0.026 | 0.49 | 0.32 | 0.23 | 0.37 | 0.51 | 0.38 |
+
+Findings: (1) the container knob is a cliff: at rate 0.015 and waterway value of time 0.15, 110 Mt/yr of containers cross Kaub (target ~10) and every waterway floods (Main 56 Mt against 12, Neckar 40 against 4, Mittellandkanal 84 against 12, Elbe 72 against 5, Danube 28 against 2.6; German waterway tkm 167 bn against 41.5); a ladder of intermediate values is needed. (2) At the Rhine's rate the canals, the Elbe and the Danube carry 3-10 times their Destatis tonnage in every candidate (Mittellandkanal 37-53 Mt against 12, Dortmund-Ems 29-42 against 15, Elbe 43-57 against 5, Weser 11 against 3), the Wesel-Datteln canal too little (1-3 against 16), while the Rhine itself is within the counts: rates by waterway are needed, hence the tagged network. (3) The Rotterdam/Amsterdam and Genoa/Venice splits turn on cents per ton: a 0.001 USD/tkm sea tariff change (c04) moves Rotterdam from 58 to 77 Mt and the Waal at Tiel from 12 to 32, and c07 takes Rotterdam to 186 with the Lek at 139; per-port fees are the robust instrument (code added: logistics.loading_fees.by_port / dwell_times.by_port on the port_name tag). (4) Rail +40 % abroad overshoots (FR 1 % of inland tkm by rail against 9, IT 4 against 12, AT 18 against 29): +20 % in round 2. (5) Fees on all sea ports collapse the intra-EU short sea (Gdansk 10 Mt, Genoa 8, Valencia 20): not the way. (6) Cheaper dry-bulk trains pull too much off the Rhine (Kaub dry bulk 12 against 20-25) and lift German rail to 29 % against 21. The candidates' Rhine bulk (c04/c05: Kaub 51-52 Mt, dry 20, liquid 31; Emmerich 81-83) reproduces the paper's model (Kaub 53.8); the paper's own flows file (2026_s07_flows) is still to be re-packed from the cluster.
+
+Round 2 (jobs_20261025_round2.txt, eleven runs on the tagged network): d00 the tagged network with the paper's costs (a check of the tagging); d01 waterway rates by waterway (Rhine and the large Dutch and Belgian waterways 0.010 bulk / 0.038 liquid / 0.022 container; locked tributaries and the Danube 0.013; canals 0.020; Elbe and Oder 0.030; unkeyed small canals 0.015); d02-d04 the container ladder on d01 (waterway value of time 0.28 and 0.25; rate 0.018 at 0.35); d05 d01 + rail +20 % abroad; d06 d01 + sea tariff 0.0020 and container sea value of time 0.25; d07 d01 + per-port fees (Amsterdam +1.5, Venice +2.0 USD/t); d08 everything but the containers; d09/d10 d08 + the container ladder. Prerequisite: the tagged network files copied to the cluster's data root (EU/Transport/tagged/) and the code pulled (by_port rule, tests green: full suite passed).
+
+
+## 27 October: recalibration round 2 read, round 3 designed
+
+Round 2 (eleven runs on the tagged network, private caches, no gate; the paper's own flows re-packed and scored as the reference, 0.359 overall). Block errors (mean |log10(model/target)|):
+
+| run | ports | country split | NST | Rhine | basins | overall |
+|---|---:|---:|---:|---:|---:|---:|
+| paper (2026_s07_flows) | 0.479 | 0.320 | 0.220 | 0.257 | 0.530 | 0.359 |
+| d00 tagged network, paper's costs | 0.479 | 0.320 | 0.220 | 0.257 | 0.530 | 0.359 (identical: the tagging is neutral) |
+| d01 rates by waterway | 0.465 | 0.320 | 0.205 | 0.260 | 0.425 | 0.342 |
+| d02 d01 + container VOT 0.28 | 0.473 | 0.320 | 0.237 | 0.228 | 0.394 | 0.343 |
+| d03 d01 + container VOT 0.25 | 0.479 | 0.318 | 0.248 | 0.273 | 0.382 | 0.352 |
+| d04 d01 + container rate 0.018 | 0.465 | 0.320 | 0.205 | 0.260 | 0.425 | 0.342 (no effect) |
+| d05 d01 + rail +20 % abroad | 0.470 | 0.278 | 0.210 | 0.251 | 0.432 | 0.333 |
+| d06 d01 + sea 0.0020 / container sea VOT 0.25 | 0.468 | 0.335 | 0.207 | 0.274 | 0.418 | 0.348 |
+| d07 d01 + port fees Amsterdam +1.5 / Venice +2.0 | 0.536 | 0.320 | 0.207 | 0.185 | 0.426 | 0.353 |
+| d08 d01 + d05 + d06 + d07 | 0.549 | 0.299 | 0.205 | 0.182 | 0.420 | 0.350 |
+| d09 d08 + container VOT 0.28 | 0.556 | 0.296 | 0.232 | 0.133 | 0.370 | 0.344 |
+| d10 d08 + container VOT 0.25 | 0.556 | 0.297 | 0.247 | 0.197 | 0.385 | 0.358 |
+
+What each knob did: rates by waterway (d01) bring the Mittellandkanal from 41 to 9.7 Mt (Destatis 12.2), the Elbe from 45 to 7.5 (5.3), the Neckar from 13 to 6.5 (3.8), the Main from 17 to 12.9 (12.3), the Danube from 5.5 to 2.6 (2.6), the Main-Danube canal from 5.0 to 1.7 (2.5), German waterway tonne-km from 63 to 37 bn (41.5), the German waterway share from 19 to 11 % (7), the Czech from 9 to 0 (0); but they empty the Ruhr-canal corridor (Wesel-Datteln 1.4 against 16.2, Dortmund-Ems 4.2 against 14.7, Rhein-Herne 7.9 against 10.7) and overload the Weser (16 against 3), and Hamburg falls from 78 to 56 Mt (100) as its Elbe hinterland becomes dear. Rail +20 % abroad (d05) puts the rail shares on target: FR 12 % (9), IT 14 (12), AT 36 (29), CZ 28 (22), PL 25 (24), DE 26 (21). The per-port fees (d07) move the Rhine stream back to Rotterdam (58 to 151 Mt; Tiel 12 to 90; Genoa 24 to 37) but overshoot the two fee ports (Amsterdam 19 against 81, Venice 0 against 22) and send the stream down the Lek (101 Mt) rather than the Waal. The container value of time on waterways is a cliff: 1.7 Mt of containers at Kaub at 0.35, 37 at 0.28, 45 at 0.25 (target ~10); the rate alone (0.018) does nothing. The sea tariff (d06) helps nothing (Antwerp down to 133). The Kaub bulk stays where the paper had it in every run (dry 20-22, liquid 28-31 Mt).
+
+Round 3 (jobs_20261027_round3.txt, six runs): the waterway rates corrected (Ruhr canals 0.013, Weser 0.022, Lek 0.012) + rail +20 % abroad + a fee ladder (+0.5 and +1.0 USD/t on Amsterdam and Venice) + the container ladder narrowed to 0.32 and 0.30.
+
+
+## 27 October (evening): round 3 read, round 4 launched from the cluster session
+
+Round 3 (six runs: rates by waterway v2 + rail +20 % abroad + fee ladder + container ladder), block errors against the paper's model:
+
+| run | ports | country split | NST | Rhine | basins | overall |
+|---|---:|---:|---:|---:|---:|---:|
+| paper | 0.479 | 0.320 | 0.220 | 0.257 | 0.530 | 0.359 |
+| e01 fees +0.5 | 0.463 | 0.278 | 0.207 | 0.177 | 0.389 | 0.316 |
+| e02 fees +1.0 | 0.470 | 0.279 | 0.207 | 0.149 | 0.388 | 0.313 |
+| e03 fees +0.5, container VOT 0.32 | 0.463 | 0.280 | 0.204 | 0.154 | 0.387 | 0.311 |
+| e04 fees +0.5, VOT 0.30 | 0.464 | 0.279 | 0.230 | 0.087 | 0.396 | 0.308 |
+| e05 fees +1.0, VOT 0.32 | 0.469 | 0.280 | 0.203 | 0.121 | 0.385 | 0.308 |
+| e06 fees +1.0, VOT 0.30 | 0.468 | 0.279 | 0.229 | 0.396 | 0.396 | 0.307 |
+
+Containers at Kaub: 0 (paper), 11.5 Mt at VOT 0.32, 30 at 0.30 (observed ~10): 0.32 is the value. Emmerich containers 32 at 0.32 (observed ~25). Fees: Amsterdam 83 Mt at +0.5 and 27 at +1.0 (target 81); Rotterdam 99 and 154 (target ~250 without transhipment); Tiel 49 and 97 (125); Venice untouched (81-92 against 22; +2.0 had emptied it). Rail shares on target in every run (FR 12, IT 14, AT 36, CZ 28, PL 25, DE 26, NL 6, BE 13). German waterway share 13 % at VOT 0.32 (target 7), German waterway tkm 44 bn (41.5); Dutch waterway share 55 % (41). Basins: Mittellandkanal 8.8 (12.2), Dortmund-Ems 12.5 (14.7), Elbe 8.8 (5.3), Main 13.8 (12.3), Neckar 6.5 (3.8), Danube 3.7 (2.6), Weser 9.6 (3.0), Wesel-Datteln 1.2 (16.2, a network or tagging issue on that canal). Hamburg 57 (100, hinterland now dear; its real hinterland is largely rail and its count includes transhipment). Chosen base: e05 (rates v2, rail +20 % abroad, container VOT 0.32 on waterways).
+
+Round 4 (jobs_20261027_round4.txt, four runs on e05): the middle fee rungs (Amsterdam +0.75, Venice +1.5) and two waterway corrections (the Ruhr canals at the Rhine rate; the Dutch waterways off the Rhine chain at 0.012), alone and together. Launched from the cluster's JupyterLab session (browser access granted by the author), the results packed and downloaded the same way.
