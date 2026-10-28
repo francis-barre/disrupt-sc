@@ -59,6 +59,18 @@ def test_seed_change_keeps_transport_and_agents():
     assert a["sc_network"] != b["sc_network"]
 
 
+def test_import_localization_change_invalidates_supply_chain_and_routes():
+    a = _hashes(BASE)
+    cfg = copy.deepcopy(BASE)
+    cfg["weight_localization_import"] = 1.5
+    b = _hashes(cfg)
+
+    assert a["transport_network"] == b["transport_network"]
+    assert a["agents"] == b["agents"]
+    assert a["sc_network"] != b["sc_network"]
+    assert a["logistic_routes"] != b["logistic_routes"]
+
+
 def test_commercial_link_table_setting_only_invalidates_route_cache():
     legacy_default = _hashes(BASE)
     with_table = copy.deepcopy(BASE)

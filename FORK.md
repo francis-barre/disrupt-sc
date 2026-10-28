@@ -167,6 +167,13 @@ small.
 Validation: `tests/test_sparse_imports.py` checks default-off behavior,
 reproducibility, margin conservation, and preservation of domestic inputs.
 
+## Import localization cache invalidation
+
+`weight_localization_import` changes the supplier mix in the supply-chain graph.
+It is included in the run and `sc_network` fingerprints, so changing it
+rebuilds the supply-chain and route caches without rebuilding transport or
+agent placement. `tests/test_stage_fingerprint.py` covers this dependency.
+
 ## Geographic nearest-node assignment
 
 `find_nearest_node_id` converts node and agent locations to WGS84 and maps
