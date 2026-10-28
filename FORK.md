@@ -166,3 +166,13 @@ small.
 
 Validation: `tests/test_sparse_imports.py` checks default-off behavior,
 reproducibility, margin conservation, and preservation of domestic inputs.
+
+## Geographic nearest-node assignment
+
+`find_nearest_node_id` converts node and agent locations to WGS84 and maps
+those coordinates to 3D unit-sphere points before using the existing
+`cKDTree`. Chord distance on the sphere preserves great-circle nearest-node
+ordering, so longitude and latitude degrees are no longer treated as equal
+lengths. Input geometries remain in their source CRS; an agent GeoDataFrame
+without a CRS is interpreted in the transport-nodes CRS, matching the previous
+caller assumption. No dependency or transport cost changes are introduced.

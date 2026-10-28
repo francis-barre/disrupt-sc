@@ -21,13 +21,21 @@ from disruptsc.params import AgentParams
 # Utility functions
 # ======================================================================
 
+def _unit_sphere_xyz(gdf):
+    lon, lat = np.deg2rad(np.column_stack((gdf.geometry.x, gdf.geometry.y))).T
+    cos_lat = np.cos(lat)
+    return np.column_stack(
+        (cos_lat * np.cos(lon), cos_lat * np.sin(lon), np.sin(lat))
+    )
+
+
 def find_nearest_node_id(transport_nodes: gpd.GeoDataFrame, gdf: gpd.GeoDataFrame) -> np.ndarray:
-    """Find nearest transport node for each geometry in gdf using KDTree."""
-    node_coords = np.column_stack([transport_nodes.geometry.x.values,
-                                   transport_nodes.geometry.y.values])
-    query_coords = np.column_stack([gdf.geometry.x.values, gdf.geometry.y.values])
-    tree = cKDTree(node_coords)
-    _, indices = tree.query(query_coords)
+    """Find nearest transport node by great-circle distance."""
+    nodes = transport_nodes.to_crs(4326)
+    points = gdf.set_crs(transport_nodes.crs) if gdf.crs is None else gdf
+    _, indices = cKDTree(_unit_sphere_xyz(nodes)).query(
+        _unit_sphere_xyz(points.to_crs(4326))
+    )
     return transport_nodes.index.values[indices]
 
 
