@@ -47,7 +47,7 @@ from disruptsc.init_pipeline.transport import build_transport_network
 from disruptsc.init_pipeline.agents import (
     attachment_nodes,
     create_firm_table, create_firms, load_tech_coefs, load_input_criticality, load_input_pooling, import_bundle_shares,
-    load_inventories, configure_household_inventories, report_inventory_to_gdp,
+    load_inventories, configure_household_inventories,
     create_household_table, create_households, create_countries,
     load_transit_matrix,
     add_representative_demand_agents,
@@ -79,6 +79,44 @@ from disruptsc.run_pipeline.export import (
     create_criticality_results_writer, criticality_result_to_row,
     export_criticality_geojson, CRITICALITY_RESULT_COLUMNS,
 )
+
+
+_CRITICALITY_WORKER_STATE = None
+_CRITICALITY_WORKER_TP = None
+_CRITICALITY_WORKER_SP = None
+_CRITICALITY_WORKER_DURATION = None
+_CRITICALITY_WORKER_T_FINAL = None
+
+
+def _init_criticality_worker(state, tp, sp, duration, t_final):
+    global _CRITICALITY_WORKER_STATE, _CRITICALITY_WORKER_TP, _CRITICALITY_WORKER_SP
+    global _CRITICALITY_WORKER_DURATION, _CRITICALITY_WORKER_T_FINAL
+    _CRITICALITY_WORKER_STATE = state
+    _CRITICALITY_WORKER_TP = tp
+    _CRITICALITY_WORKER_SP = sp
+    _CRITICALITY_WORKER_DURATION = duration
+    _CRITICALITY_WORKER_T_FINAL = t_final
+
+
+def _run_criticality_edge_worker(task):
+    index, total, edge_id, baseline_tons = task
+    logging.info(
+        "Criticality edge %s/%s: id=%s (baseline tons=%s)",
+        index, total, edge_id, f"{baseline_tons:,.1f}",
+    )
+    state = _CRITICALITY_WORKER_STATE
+    all_data = run_criticality(
+        state["sc"], state["tn"], state["firms"], state["hh"], state["countries"],
+        _CRITICALITY_WORKER_TP, _CRITICALITY_WORKER_SP, edge_id,
+        _CRITICALITY_WORKER_DURATION, _CRITICALITY_WORKER_T_FINAL,
+        baseline_ready=True, baseline_data=state["baseline_data"],
+    )
+    losses = export_summary(
+        all_data["household"], all_data["country"],
+        monetary_units=_CRITICALITY_WORKER_TP.monetary_units,
+    )
+    losses["edge_id"] = edge_id
+    return losses
 
 
 def main():
@@ -410,12 +448,12 @@ def execute(config: dict, *, cache: str | None = None,
             transport_network.shrink_cargo_types_to(used_cargo)
 
         # --------------------------------------------------------------
-        # Stage 3b: Set initial conditions (before routing, so links have
-        #           equilibrium orders for capacity-aware route assignment).
-        #           Every simulation entry point resets them again itself.
+        # Stage 3b: Seed link tonnage for the baseline capacity diagnostic.
+        # Route assignment itself is capacity-blind, so skip this IO solve
+        # when capacity checks are disabled. Simulation initializes agents later.
         # --------------------------------------------------------------
-        set_initial_conditions(sc_network, firms, households, countries, tp, sp)
-        report_inventory_to_gdp(firms, households, sp.time_resolution)
+        if tp.capacity_constraint_enabled:
+            set_initial_conditions(sc_network, firms, households, countries, tp, sp)
 
     # ------------------------------------------------------------------
     # Stage 4: Logistic routes
@@ -427,7 +465,6 @@ def execute(config: dict, *, cache: str | None = None,
             scope=scope, stage_fp=stage_fps["logistic_routes"])
         _configure_households(households)
         _configure_firms(firms)
-        report_inventory_to_gdp(firms, households, sp.time_resolution)
         # Caches written before route sharing (KI-30) hold one Route per link;
         # share them now and re-save once so the next load is small.
         before, after = intern_routes(sc_network, transport_network)
@@ -504,7 +541,6 @@ def execute(config: dict, *, cache: str | None = None,
                     export_logistics_report(all_data["logistics_reports"], export_folder, tp.monetary_units)
 
     elif sim_type == "criticality":
-        import copy
         crit_cfg = config.get("criticality", {})
         duration = crit_cfg.get("duration", 4)
         t_final = sp.t_final if sp.t_final else duration + 2
@@ -603,29 +639,36 @@ def execute(config: dict, *, cache: str | None = None,
                 f"Running criticality for {len(remaining)} edge(s) "
                 f"(of {len(edges_to_test)} selected, {len(done_keys)} already done)"
             )
+            criticality_state = {
+                "sc": sc_network, "tn": transport_network,
+                "firms": firms, "hh": households, "countries": countries,
+                "baseline_data": baseline_all_data,
+            }
+            workers = crit_cfg.get("workers", 1)
+            if not isinstance(workers, int) or isinstance(workers, bool) or workers < 1:
+                raise ValueError("criticality.workers must be a positive integer")
+
             with CsvWriter(
                 csv_path, ["household_loss", "country_loss", "edge_id"],
                 flush_each_write=True, append=resume,
             ) as csv_writer:
-                for i, edge_id in enumerate(remaining, start=1):
-                    logging.info(
-                        f"Criticality edge {i}/{len(remaining)}: id={edge_id} "
-                        f"(baseline tons={baseline_flows.get(edge_id, 0):,.1f})"
-                    )
-                    state = copy.deepcopy({
-                        "sc": sc_network, "tn": transport_network,
-                        "firms": firms, "hh": households, "countries": countries,
-                    })
-                    all_data = run_criticality(
-                        state["sc"], state["tn"], state["firms"], state["hh"], state["countries"],
-                        tp, crit_sp, edge_id, duration, t_final,
-                    )
-                    losses = export_summary(
-                        all_data["household"], all_data["country"],
-                        monetary_units=tp.monetary_units,
-                    )
-                    losses["edge_id"] = edge_id
-                    csv_writer.write_row(losses)
+                if remaining:
+                    from multiprocessing import get_context
+
+                    tasks = [
+                        (i, len(remaining), edge_id, baseline_flows.get(edge_id, 0.0))
+                        for i, edge_id in enumerate(remaining, start=1)
+                    ]
+                    with get_context("fork").Pool(
+                        processes=workers,
+                        initializer=_init_criticality_worker,
+                        initargs=(criticality_state, tp, crit_sp, duration, t_final),
+                        maxtasksperchild=1,
+                    ) as pool:
+                        for losses in pool.imap_unordered(
+                            _run_criticality_edge_worker, tasks, chunksize=1,
+                        ):
+                            csv_writer.write_row(losses)
             logging.info(f"Criticality results saved to {csv_path}")
 
     else:
@@ -722,6 +765,7 @@ def _run_monte_carlo(sc_network, transport_network, firms, households, countries
         all_data = run_disruption(
             sc_network, transport_network, firms, households, countries,
             tp, sp, config.get("disruptions"), transport_edges, firm_table, sp.t_final,
+            report_inventory=(i == 0),
         )
         losses = export_summary(
             all_data["household"], all_data["country"],

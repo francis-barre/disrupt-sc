@@ -183,3 +183,11 @@ ordering, so longitude and latitude degrees are no longer treated as equal
 lengths. Input geometries remain in their source CRS; an agent GeoDataFrame
 without a CRS is interpreted in the transport-nodes CRS, matching the previous
 caller assumption. No dependency or transport cost changes are introduced.
+
+## Criticality and disruption performance
+
+Independent criticality edges can run in forked workers from a prepared baseline,
+without copying model state for every edge. Disrupted alternative routes are
+searched in batches. Runs without capacity constraints skip the pre-route
+equilibrium pass, and Monte Carlo inventory reporting runs only on the first
+iteration. Edge-flow summaries accumulate dynamic categories with `defaultdict`.

@@ -11,6 +11,8 @@ import scipy.sparse as sp_sparse
 import scipy.sparse.linalg as sp_linalg
 
 from disruptsc.config import EPSILON
+from disruptsc.agents.transport_utils import discover_routes_batched
+from disruptsc.init_pipeline.agents import report_inventory_to_gdp
 from disruptsc.params import TransportParams, SimParams
 from disruptsc.run_pipeline.capacity_gate import run_capacity_gate
 from disruptsc.run_pipeline.disruption import (
@@ -36,6 +38,7 @@ def run_initial_state(sc_network, transport_network, firms, households, countrie
                       observer=None):
     """Single-timestep equilibrium run.  Returns collected data dicts."""
     set_initial_conditions(sc_network, firms, households, countries, tp, sp)
+    report_inventory_to_gdp(firms, households, sp.time_resolution)
 
     # Run t=0
     flow_data, logistics_report, _ = _run_one_time_step(
@@ -73,7 +76,7 @@ def run_disruption(sc_network, transport_network, firms, households, countries,
                    t_final: int,
                    export_folder: Path | None = None,
                    monitored_edges: list[str] | None = None,
-                   observer=None):
+                   observer=None, report_inventory: bool = True):
     """Full disruption simulation.  Returns lists of per-timestep data."""
     writers = (AgentWriters(export_folder, _days_per_timestep(sp.time_resolution),
                             export_link_data=sp.export_link_data,
@@ -84,7 +87,7 @@ def run_disruption(sc_network, transport_network, firms, households, countries,
         all_data, logistics_reports, all_routing_summaries = prepare_disruption_baseline(
             sc_network, transport_network, firms, households, countries,
             tp, sp, writers=writers, monitored_edges=monitored_edges,
-            observer=observer,
+            observer=observer, report_inventory=report_inventory,
         )
 
         # Parse disruptions
@@ -140,13 +143,15 @@ def prepare_disruption_baseline(sc_network, transport_network, firms, households
                                 tp: TransportParams, sp: SimParams,
                                 writers: AgentWriters | None = None,
                                 monitored_edges: list[str] | None = None,
-                                observer=None):
+                                observer=None, report_inventory: bool = True):
     """Reset to equilibrium and execute the shared, undisrupted t=0 baseline."""
     # Clear leftover transport disruptions/loads from a previous run on the same
     # build (e.g. Monte-Carlo iteration N whose edge disruption outlasted t_final
     # would otherwise still be closed at iteration N+1's baseline).
     transport_network.reinitialize_flows_and_disruptions()
     set_initial_conditions(sc_network, firms, households, countries, tp, sp)
+    if report_inventory:
+        report_inventory_to_gdp(firms, households, sp.time_resolution)
 
     all_data = {"firm": [], "household": [], "country": [], "transport_flow": []}
     logistics_reports = []
@@ -206,9 +211,13 @@ def continue_disruption_run(sc_network, transport_network, firms, households, co
 def run_criticality(sc_network, transport_network, firms, households, countries,
                     tp: TransportParams, sp: SimParams,
                     edge_id: int, duration: int, t_final: int,
-                    observer=None):
-    """Criticality analysis for a single transport edge."""
-    set_initial_conditions(sc_network, firms, households, countries, tp, sp)
+                    observer=None, *, baseline_ready=False, baseline_data=None):
+    """Run one edge from either a fresh model or the prepared t=0 baseline."""
+    transport_network.reinitialize_flows_and_disruptions()
+    transport_network.invalidate_alternative_routes()
+    first_step = 1 if baseline_ready else 0
+    if not baseline_ready:
+        set_initial_conditions(sc_network, firms, households, countries, tp, sp)
 
     disruptions = [TransportDisruption(
         description={edge_id: 1.0},
@@ -216,9 +225,14 @@ def run_criticality(sc_network, transport_network, firms, households, countries,
         start_time=1,
     )]
 
-    all_data = {"firm": [], "household": [], "country": [], "transport_flow": []}
+    if baseline_ready:
+        all_data = {key: list(baseline_data[key]) for key in (
+            "firm", "household", "country", "transport_flow",
+        )}
+    else:
+        all_data = {"firm": [], "household": [], "country": [], "transport_flow": []}
 
-    for t in range(0, t_final + 1):
+    for t in range(first_step, t_final + 1):
         flow_data, _, _ = _run_one_time_step(
             t, sc_network, transport_network, transport_network,
             firms, households, countries, tp, sp, disruptions=disruptions,
@@ -453,6 +467,28 @@ def _run_one_time_step(time_step, sc_network, transport_network,
         available_transport_network = apply_disruptions(
             disruptions, time_step, transport_network, firms,
         )
+        if tp.use_route_cache:
+            requests = [
+                (link.origin_node, link)
+                for _, _, data in sc_network.edges(data=True)
+                for link in (data["object"],)
+                if link.route is not None
+                and (
+                    not available_transport_network.is_route_available(link.route)
+                    or link.route.has_cost_shock(transport_network)
+                )
+            ]
+            if requests:
+                from time import perf_counter
+                started = perf_counter()
+                discover_routes_batched(
+                    requests, transport_network, available_transport_network,
+                    tp.use_route_cache, switching_costs=tp.switching_costs,
+                )
+                logging.info(
+                    "Precomputed alternatives for %s disrupted links in %.1fs",
+                    f"{len(requests):,}", perf_counter() - started,
+                )
 
     # Reconstruction demand (ARIO-style): when a reconstruction-enabled capital
     # destruction is active, firms request capital-good output to rebuild. Set

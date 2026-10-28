@@ -593,24 +593,27 @@ class TransportNetwork(nx.Graph):
         flows = []
         for _, _, edge in self.edges(data=True):
             shipments = edge["shipments"].values()
-            data = {"time_step": time_step, "id": edge["id"], "flow_total": 0, "flow_total_tons": 0}
+            data = defaultdict(
+                float,
+                {"time_step": time_step, "id": edge["id"], "flow_total": 0, "flow_total_tons": 0},
+            )
             for s in shipments:
                 fc, pt = s["flow_category"], s["product_type"]
                 ct = s.get("cargo_type", "")
                 qty, tons = s["quantity"], s["tons"]
-                data[f"flow_{fc}_{pt}"] = data.get(f"flow_{fc}_{pt}", 0) + qty
-                data[f"flow_{fc}"] = data.get(f"flow_{fc}", 0) + qty
-                data[f"flow_{pt}"] = data.get(f"flow_{pt}", 0) + qty
+                data[f"flow_{fc}_{pt}"] += qty
+                data[f"flow_{fc}"] += qty
+                data[f"flow_{pt}"] += qty
                 data["flow_total"] += qty
                 data["flow_total_tons"] += tons
                 if ct:
-                    data[f"tons_{ct}"] = data.get(f"tons_{ct}", 0) + tons
-                    data[f"tons_{ct}_{fc}"] = data.get(f"tons_{ct}_{fc}", 0) + tons
-                    data[f"usd_{ct}"] = data.get(f"usd_{ct}", 0) + qty
+                    data[f"tons_{ct}"] += tons
+                    data[f"tons_{ct}_{fc}"] += tons
+                    data[f"usd_{ct}"] += qty
                 # per-category tons (tons_cat_transit etc.): lets reporting
                 # separate exogenous transit from the scope's own freight
-                data[f"tons_cat_{fc}"] = data.get(f"tons_cat_{fc}", 0) + tons
-            flows.append(data)
+                data[f"tons_cat_{fc}"] += tons
+            flows.append(dict(data))
         return flows
 
     def compute_logistics_report(self, time_step: int,
